@@ -928,11 +928,11 @@ int main(int argc, char **argv)
 			break;
 		case 'v':
 			printf("%s %s\n", PROJECT_NAME, PROJECT_VERSION);
-			break;
+			exit(0);
 		case 'h':
 		default:
 			show_usage(argv[0]);
-			exit(1);
+			exit(0);
 		}
 	}
 
