@@ -12,36 +12,17 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <rdma/rdma_netlink.h>
-#include <string.h>
 #include <signal.h>
-#include <stdio.h>
 #include <errno.h>
 #include <unistd.h>
 #include <pthread.h>
 #include <ifaddrs.h>
-#include <stdarg.h>
 
 #include <getopt.h>
 #include <msg_spec.h>
 
 #include "config.h"
-
-#define IP2GID_SERVER_PORT 4791
-#define IP2GID_TIMEOUT_WAIT 2
-#define IP2GID_NL_MAX_PAYLOAD 72
-#define DEFAULT_PENDING_REQUESTS 500
-#define IP2GID_PENDING_TIMEOUT 60
-#define IP2GID_LOG_FILE "stdout"
-
-#define ip2gid_log(level, format, ...) \
-	ip2gid_write(level, "%s: "format, __func__, ## __VA_ARGS__)
-
-enum {
-	IP2GID_LOG_ALL,
-	IP2GID_LOG_INFO,
-	IP2GID_LOG_WARN,
-	IP2GID_LOG_ERR,
-};
+#include "log.h"
 
 union addr_sa {
 	struct sockaddr sa;
@@ -80,73 +61,10 @@ struct cell_req {
 static int cells_used = 0;
 struct cell_req pending[DEFAULT_PENDING_REQUESTS] = {};
 pthread_mutex_t lock_pending = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static int server_port = IP2GID_SERVER_PORT;
 static int timeout_in_seconds = IP2GID_TIMEOUT_WAIT;
 static int timeout_in_pending_list = IP2GID_PENDING_TIMEOUT;
-static char log_file[128] = IP2GID_LOG_FILE;
-static int log_level = IP2GID_LOG_ERR;
-static FILE *flog;
-
-static char *log_level_str(int level)
-{
-	if (level == IP2GID_LOG_INFO)
-		return "INFO";
-	if (level == IP2GID_LOG_WARN)
-		return "WARN";
-	if (level == IP2GID_LOG_ERR)
-		return "ERR";
-
-	return "UNKNOWN";
-}
-
-#define ip2gid_inet_ntop(level, ...) do {	\
-	if (level < log_level)			\
-		break;				\
-	inet_ntop(__VA_ARGS__);			\
-} while(0)
-
-static void ip2gid_write(int level, const char *format, ...)
-{
-        va_list args;
-        struct timeval tv;
-        struct tm tmtime;
-        char buffer[20];
-
-        if (level < log_level)
-                return;
-
-        gettimeofday(&tv, NULL);
-        localtime_r(&tv.tv_sec, &tmtime);
-        strftime(buffer, 20, "%Y-%m-%dT%H:%M:%S", &tmtime);
-        va_start(args, format);
-        pthread_mutex_lock(&log_lock);
-        fprintf(flog, "%s.%03u:%s: ",
-		buffer,
-		(unsigned) (tv.tv_usec / 1000),
-		log_level_str(level));
-        vfprintf(flog, format, args);
-        fflush(flog);
-        pthread_mutex_unlock(&log_lock);
-        va_end(args);
-}
-
-static FILE *ip2gid_open_log(void)
-{
-        FILE *f;
-
-        if (!strcasecmp(log_file, "stdout"))
-                return stdout;
-
-        if (!strcasecmp(log_file, "stderr"))
-                return stderr;
-
-        if (!(f = fopen(log_file, "w")))
-                f = stdout;
-
-        return f;
-}
 
 static void free_cell_req(struct cell_req *pending)
 {
@@ -286,18 +204,12 @@ static int server_find_gid(struct ip2gid_req_ipv4 *req,
 			   struct ip2gid_resp_gid *resp,
 			   uint32_t *resp_len)
 {
-	char gid_str[INET6_ADDRSTRLEN] = {};
-	char ip_str[INET_ADDRSTRLEN] = {};
 	struct nl_addr *nl_addr;
 	struct rtnl_link *link;
 	struct ifaddrs* ifaddr;
 	struct ifaddrs* ifa;
 	int err;
 
-	ip2gid_inet_ntop(IP2GID_LOG_INFO, AF_INET, (const void *)(&req->ipv4),
-			 ip_str, sizeof(ip_str));
-	ip2gid_log(IP2GID_LOG_INFO,
-		   "Requesting GID for ip: %s\n", ip_str);
 	err = getifaddrs(&ifaddr);
 	if (err)
 		return err;
@@ -329,13 +241,6 @@ done:
 				resp->hdr.len = htons(sizeof(*resp));
 				(*resp_len) += sizeof(*resp);
 				resp_hdr->num_tlvs++;
-				ip2gid_inet_ntop(IP2GID_LOG_INFO,
-						 AF_INET6,
-						 resp->gid, gid_str,
-						 sizeof(gid_str));
-				ip2gid_log(IP2GID_LOG_INFO,
-					   "Found GID(%s) for request ip (%s)\n",
-					   gid_str, ip_str);
                         } else {
 				err = ENOENT;
 			}
@@ -520,7 +425,6 @@ static int client_nl_rdma_parse_ip_attr(struct nlattr *attr,
 					socklen_t *addr_size,
 					struct ip2gid_obj *hdr)
 {
-	char ip_str[INET_ADDRSTRLEN] = {};
 	struct ip2gid_req_ipv4 *ipv4;
 	struct ip2gid_hdr *req_hdr;
 	int ret = 0;
@@ -542,11 +446,6 @@ static int client_nl_rdma_parse_ip_attr(struct nlattr *attr,
 		ipv4->ipv4 = addr->s4.sin_addr.s_addr;
 		hdr->data_len += sizeof(*ipv4);
 		req_hdr->num_tlvs++;
-		ip2gid_inet_ntop(IP2GID_LOG_INFO, AF_INET,
-				 (const void *)(&ipv4->ipv4),
-				 ip_str, sizeof(ip_str));
-		ip2gid_log(IP2GID_LOG_INFO,
-			   "Got KERNEL request ip2gid for ip: %s\n", ip_str);
 		break;
 
 	default:
@@ -735,7 +634,6 @@ loop:
 static void client_nl_rdma_send_resp(struct cell_req *orig_req,
 				     struct ip2gid_hdr *resp_hdr)
 {
-	char gid_str[INET6_ADDRSTRLEN] = {};
 	struct sockaddr_nl dst_addr = {};
 	struct ip2gid_resp_gid *gid_resp;
 	struct nl_msg resp_msg = {};
@@ -762,15 +660,6 @@ static void client_nl_rdma_send_resp(struct cell_req *orig_req,
 	       sizeof(gid_resp->gid));
 	resp_msg.nlmsg_hdr.nlmsg_len += attr->nla_len;
 
-
-	ip2gid_inet_ntop(IP2GID_LOG_INFO,
-			 AF_INET6,
-			 gid_resp->gid, gid_str,
-			 sizeof(gid_str));
-	ip2gid_log(IP2GID_LOG_INFO,
-		   "Sending GID resp: %s to kernel (seq = %u)\n",
-		   gid_str,
-		   orig_req->seq);
 	datalen = NLMSG_ALIGN(resp_msg.nlmsg_hdr.nlmsg_len);
 	ret = sendto(priv.nl_rdma, &resp_msg, datalen, 0,
 		     (void *)&dst_addr,
@@ -904,8 +793,8 @@ int main(int argc, char **argv)
 		{"version", 0, NULL, 'v'},
                 {},
         };
+	int level, log_level;
 	pthread_t tid[3];
-	int level;
 	int err;
 	int op;
 
@@ -936,7 +825,9 @@ int main(int argc, char **argv)
 		}
 	}
 
-	flog = ip2gid_open_log();
+	err = ip2gid_open_log(log_level);
+	if (err)
+		return err;
 
 	err = create_server();
 	if (err)
