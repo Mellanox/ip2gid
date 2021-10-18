@@ -8,11 +8,6 @@
 #include <arpa/inet.h>
 #include <stdio.h>
 
-#define IP2GID_SERVER_PORT 4791
-#define IP2GID_TIMEOUT_WAIT 2
-#define IP2GID_NL_MAX_PAYLOAD 72
-#define DEFAULT_PENDING_REQUESTS 500
-#define IP2GID_PENDING_TIMEOUT 60
 #define IP2GID_LOG_FILE "stdout"
 
 #define ip2gid_log(level, format, ...) \
