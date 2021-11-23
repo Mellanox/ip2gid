@@ -24,13 +24,10 @@
 #include <getopt.h>
 #include <msg_spec.h>
 
+#include "ip2gid.h"
+
 #include "config.h"
 
-#define IP2GID_SERVER_PORT 4791
-#define IP2GID_TIMEOUT_WAIT 2
-#define IP2GID_NL_MAX_PAYLOAD 72
-#define DEFAULT_PENDING_REQUESTS 500
-#define IP2GID_PENDING_TIMEOUT 60
 #define IP2GID_LOG_FILE "stdout"
 
 #define ip2gid_log(level, format, ...) \
@@ -43,39 +40,7 @@ enum {
 	IP2GID_LOG_ERR,
 };
 
-union addr_sa {
-	struct sockaddr sa;
-	struct sockaddr_in s4;
-};
-
-struct ip2gid_obj {
-	uint32_t data_len;
-	char *data[sizeof(struct ip2gid_hdr) +
-		sizeof(struct ip2gid_req_ipv4) +
-		sizeof(struct ip2gid_resp_gid)];
-};
-
-struct nl_msg {
-	struct nlmsghdr nlmsg_hdr;
-	union {
-		uint8_t data[IP2GID_NL_MAX_PAYLOAD];
-		struct nlattr attr[0];
-	};
-};
-
-struct {
-	int sockfd_c_ip4;
-	int sockfd_s_ip4;
-	int  nl_rdma;
-	struct nl_sock* nl_sock;
-} priv = {-1, -1, -1, NULL};
-
-struct cell_req {
-	char used;
-	uint32_t seq;
-	uint16_t type;
-	struct timespec stamp;
-};
+struct nl_ip2gid priv = {-1, -1, -1, 0, NULL};
 
 static int cells_used = 0;
 struct cell_req pending[DEFAULT_PENDING_REQUESTS] = {};
