@@ -53,4 +53,5 @@ struct nl_ip2gid {
 	struct nl_sock* nl_sock;
 };
 
+int msg_length_check(struct ip2gid_obj *obj, uint32_t max_len);
 #endif	/* _IP2GID_H */
