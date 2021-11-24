@@ -27,7 +27,7 @@ endif()
 set(CMAKE_C_COMPILER_NAMES gcc clang)
 include_directories("include")
 add_executable(ip2gid
-	src/main.c src/log.c src/msg_check.c src/client.c)
+	src/main.c src/log.c src/msg_check.c src/client.c src/server.c)
 target_compile_options(ip2gid PRIVATE -Wall)
 
 set(SEARCHPATHS
