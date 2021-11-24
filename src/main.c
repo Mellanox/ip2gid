@@ -12,106 +12,30 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <rdma/rdma_netlink.h>
-#include <string.h>
 #include <signal.h>
-#include <stdio.h>
 #include <errno.h>
 #include <unistd.h>
 #include <pthread.h>
 #include <ifaddrs.h>
-#include <stdarg.h>
 
 #include <getopt.h>
 #include <msg_spec.h>
 
 #include "ip2gid.h"
+#include "log.h"
 
 #include "config.h"
-
-#define IP2GID_LOG_FILE "stdout"
-
-#define ip2gid_log(level, format, ...) \
-	ip2gid_write(level, "%s: "format, __func__, ## __VA_ARGS__)
-
-enum {
-	IP2GID_LOG_ALL,
-	IP2GID_LOG_INFO,
-	IP2GID_LOG_WARN,
-	IP2GID_LOG_ERR,
-};
 
 struct nl_ip2gid priv = {-1, -1, -1, 0, NULL};
 
 static int cells_used = 0;
 struct cell_req pending[DEFAULT_PENDING_REQUESTS] = {};
 pthread_mutex_t lock_pending = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static int server_port = IP2GID_SERVER_PORT;
 static int timeout_in_seconds = IP2GID_TIMEOUT_WAIT;
 static int timeout_in_pending_list = IP2GID_PENDING_TIMEOUT;
-static char log_file[128] = IP2GID_LOG_FILE;
-static int log_level = IP2GID_LOG_ERR;
-static FILE *flog;
-
-static char *log_level_str(int level)
-{
-	if (level == IP2GID_LOG_INFO)
-		return "INFO";
-	if (level == IP2GID_LOG_WARN)
-		return "WARN";
-	if (level == IP2GID_LOG_ERR)
-		return "ERR";
-
-	return "UNKNOWN";
-}
-
-#define ip2gid_inet_ntop(level, ...) do {	\
-	if (level < log_level)			\
-		break;				\
-	inet_ntop(__VA_ARGS__);			\
-} while(0)
-
-static void ip2gid_write(int level, const char *format, ...)
-{
-        va_list args;
-        struct timeval tv;
-        struct tm tmtime;
-        char buffer[20];
-
-        if (level < log_level)
-                return;
-
-        gettimeofday(&tv, NULL);
-        localtime_r(&tv.tv_sec, &tmtime);
-        strftime(buffer, 20, "%Y-%m-%dT%H:%M:%S", &tmtime);
-        va_start(args, format);
-        pthread_mutex_lock(&log_lock);
-        fprintf(flog, "%s.%03u:%s: ",
-		buffer,
-		(unsigned) (tv.tv_usec / 1000),
-		log_level_str(level));
-        vfprintf(flog, format, args);
-        fflush(flog);
-        pthread_mutex_unlock(&log_lock);
-        va_end(args);
-}
-
-static FILE *ip2gid_open_log(void)
-{
-        FILE *f;
-
-        if (!strcasecmp(log_file, "stdout"))
-                return stdout;
-
-        if (!strcasecmp(log_file, "stderr"))
-                return stderr;
-
-        if (!(f = fopen(log_file, "w")))
-                f = stdout;
-
-        return f;
-}
+static int log_level = IP2GID_LOG_ALL;
 
 static void free_cell_req(struct cell_req *pending)
 {
@@ -901,7 +825,9 @@ int main(int argc, char **argv)
 		}
 	}
 
-	flog = ip2gid_open_log();
+	err = ip2gid_open_log(log_level);
+	if (err)
+		return err;
 
 	err = create_server();
 	if (err)
