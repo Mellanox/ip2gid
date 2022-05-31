@@ -103,7 +103,7 @@ int main(int argc, char **argv)
 	if (err)
 		return err;
 
-	err = pthread_create(&tid[1], NULL, &run_client_recv, &priv);
+	err = pthread_create(&tid[2], NULL, &run_client_recv, &priv);
 	if (err)
 		return err;
 
