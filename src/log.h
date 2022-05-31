@@ -8,21 +8,34 @@
 #include <arpa/inet.h>
 #include <stdio.h>
 
-#define IP2GID_LOG_FILE "stdout"
+#define RESOLV_LOG_FILE "stdout"
 
-#define ip2gid_log(level, format, ...) \
-	ip2gid_write(level, "%s: "format, __func__, ## __VA_ARGS__)
+#define resolv_log(level, format, ...) \
+	resolv_write(level, "%s: "format, __func__, ## __VA_ARGS__)
 
 enum {
-	IP2GID_LOG_ALL,
-	IP2GID_LOG_INFO,
-	IP2GID_LOG_WARN,
-	IP2GID_LOG_ERR,
+	RESOLV_LOG_ALL,
+	RESOLV_LOG_INFO,
+	RESOLV_LOG_WARN,
+	RESOLV_LOG_ERR,
+	RESOLV_LOG_MAX,
 };
 
-void ip2gid_write(int level, const char *format, ...);
-int ip2gid_open_log(int log_level);
-void ip2gid_inet_ntop(int level, int af,
+#define ip2gid_log_dbg(format, ...) \
+	resolv_write(RESOLV_LOG_ALL, " <IPR> %s: "format, __func__, ## __VA_ARGS__)
+
+#define ip2gid_log_info(format, ...) \
+	resolv_write(RESOLV_LOG_INFO, " <IPR> %s: "format, __func__, ## __VA_ARGS__)
+
+#define ip2gid_log_warn(format, ...) \
+	resolv_write(RESOLV_LOG_WARN, " <IPR> %s: "format, __func__, ## __VA_ARGS__)
+
+#define ip2gid_log_err(format, ...) \
+	resolv_write(RESOLV_LOG_ERR, " <IPR> %s: "format, __func__, ## __VA_ARGS__)
+
+void resolv_write(int level, const char *format, ...);
+int resolv_open_log(int log_level);
+void resolv_inet_ntop(int level, int af,
 		      const void *src, char *dst, socklen_t size);
 
 #endif	/* _LOG_H */

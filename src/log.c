@@ -11,25 +11,25 @@
 
 #include "log.h"
 
-static char log_file[128] = IP2GID_LOG_FILE;
-static int log_level = IP2GID_LOG_ERR;
+static char log_file[128] = RESOLV_LOG_FILE;
+static int log_level = RESOLV_LOG_ERR;
 static FILE *flog;
 
 static pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static char *log_level_str(int level)
 {
-	if (level == IP2GID_LOG_INFO)
+	if (level == RESOLV_LOG_INFO)
 		return "INFO";
-	if (level == IP2GID_LOG_WARN)
+	if (level == RESOLV_LOG_WARN)
 		return "WARN";
-	if (level == IP2GID_LOG_ERR)
+	if (level == RESOLV_LOG_ERR)
 		return "ERR";
 
 	return "UNKNOWN";
 }
 
-void ip2gid_write(int level, const char *format, ...)
+void resolv_write(int level, const char *format, ...)
 {
         va_list args;
         struct timeval tv;
@@ -55,7 +55,7 @@ void ip2gid_write(int level, const char *format, ...)
         va_end(args);
 }
 
-int ip2gid_open_log(int level)
+int resolv_open_log(int level)
 {
         if (!strcasecmp(log_file, "stdout")) {
                 flog = stdout;
@@ -74,7 +74,7 @@ int ip2gid_open_log(int level)
         return 0;
 }
 
-void ip2gid_inet_ntop(int level, int af,
+void resolv_inet_ntop(int level, int af,
 		      const void *src, char *dst, socklen_t size)
 {
 	if (level < log_level)

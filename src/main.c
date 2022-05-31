@@ -31,58 +31,62 @@
 struct nl_ip2gid priv = {-1, -1, -1, 0, NULL};
 
 static int server_port = IP2GID_SERVER_PORT;
-static int log_level = IP2GID_LOG_ALL;
+static unsigned int log_level = RESOLV_LOG_ALL;
 
 static void show_usage(char *program)
 {
 	printf("usage: %s [OPTION]\n", program);
 	printf("   [-l, --log=level]  - 0 = All\n");
-	printf("                      - 1 = Warn\n");
-	printf("                      - 2 = Error\n");
+	printf("                      - 1 = Info\n");
+	printf("                      - 2 = Warn\n");
+	printf("                      - 3 = Error\n");
 	printf("   [-v, --version]    - show version\n");
 	printf("   [-h, --help]       - Show help\n");
 }
 
-int main(int argc, char **argv)
+static int parse_opt(int argc, char **argv)
 {
 	static const struct option long_opts[] = {
                 {"log", 1, NULL, 'l'},
 		{"version", 0, NULL, 'v'},
                 {},
         };
-	pthread_t tid[3];
-	int level;
-	int err;
 	int op;
 
 	while ((op = getopt_long(argc, argv, "hvl:",
 				 long_opts, NULL)) != -1) {
 		switch (op) {
 		case 'l':
-			level = atoi(optarg);
-			if (level == 0)
-				log_level = IP2GID_LOG_ALL;
-			else if (level == 1)
-				log_level = IP2GID_LOG_WARN;
-			else if (level == 2)
-				log_level = IP2GID_LOG_ERR;
-			else {
-				printf("Not valid log level\n");
-				exit(1);
+			log_level = atoi(optarg);
+			if (log_level >= RESOLV_LOG_MAX) {
+				printf("Not valid log level %d\n", log_level);
+				return -EINVAL;
 			}
 
 			break;
 		case 'v':
 			printf("%s %s\n", PROJECT_NAME, PROJECT_VERSION);
-			exit(0);
+			return -1;
 		case 'h':
 		default:
 			show_usage(argv[0]);
-			exit(0);
+			return -1;
 		}
 	}
 
-	err = ip2gid_open_log(log_level);
+	return 0;
+}
+
+int main(int argc, char **argv)
+{
+	pthread_t tid[3];
+	int err;
+
+	err = parse_opt(argc, argv);
+	if (err)
+		return err;
+
+	err = resolv_open_log(log_level);
 	if (err)
 		return err;
 

@@ -192,8 +192,7 @@ static void client_nl_send_bad_resp(struct nl_ip2gid *priv,
 		     (void *)&dst_addr,
 		     (socklen_t)sizeof(dst_addr));
 	if (ret != datalen)
-		ip2gid_log(IP2GID_LOG_ERR,
-			   "Response wasn't sent to kernel in full\n");
+		ip2gid_log_err("Response wasn't sent to kernel in full\n");
 }
 
 static void free_cell_req(struct cell_req *pending)
@@ -246,8 +245,8 @@ static void clear_timeout_cell_req(void)
 			free_cell_req(&pending[i]);
 
 	}
-	ip2gid_log(IP2GID_LOG_INFO,"Have %d cells used out of: %d\n",
-		   cells_used, DEFAULT_PENDING_REQUESTS);
+	ip2gid_log_info("Have %d cells used out of: %d\n",
+			cells_used, DEFAULT_PENDING_REQUESTS);
 }
 
 static int client_ip_recv(struct nl_ip2gid *priv,
@@ -270,7 +269,7 @@ recv_again:
 	if (err <= 0)
 		goto recv_again;
 
-	ip2gid_log(IP2GID_LOG_INFO, "Got a new kernel request\n");
+	ip2gid_log_info("Got a new kernel request\n");
         if (!NLMSG_OK(&nl_req->nlmsg_hdr, err))
                 goto recv_again;
 
@@ -300,9 +299,8 @@ recv_again:
 	pending = find_cell_req_seq(nl_req->nlmsg_hdr.nlmsg_seq);
 	if (pending) {
 		pthread_mutex_unlock(&lock_pending);
-		ip2gid_log(IP2GID_LOG_WARN,
-			   "Got a request(seq = %u) that is already pending, dropping\n",
-			   nl_req->nlmsg_hdr.nlmsg_seq);
+		ip2gid_log_warn("Got a request(seq = %u) that is already pending, dropping\n",
+				nl_req->nlmsg_hdr.nlmsg_seq);
 		goto recv_again;
 	}
 	pthread_mutex_unlock(&lock_pending);
@@ -351,8 +349,7 @@ static void client_nl_rdma_send_resp(struct nl_ip2gid *priv,
 		     (void *)&dst_addr,
 		     (socklen_t)sizeof(dst_addr));
 	if (ret != datalen)
-		ip2gid_log(IP2GID_LOG_ERR,
-			   "Response wasn't sent to kernel in full\n");
+		ip2gid_log_err("Response wasn't sent to kernel in full\n");
 }
 
 void *run_client_recv(void *arg)
@@ -397,9 +394,8 @@ loop:
 	_pending = find_cell_req_seq(ntohl(resp_hdr->msg_id));
 	if (!_pending) {
 		pthread_mutex_unlock(&lock_pending);
-		ip2gid_log(IP2GID_LOG_WARN,
-			   "Got msg (msg_id = %u) which isn't pending\n",
-			   ntohl(resp_hdr->msg_id));
+		ip2gid_log_warn("Got msg (msg_id = %u) which isn't pending\n",
+				ntohl(resp_hdr->msg_id));
 		goto loop;
 	}
 	pending = *_pending;
@@ -436,16 +432,14 @@ loop:
 	pending = find_cell_req();
 	if (!pending) {
 		pthread_mutex_unlock(&lock_pending);
-		ip2gid_log(IP2GID_LOG_WARN,
-			   "Couldn't find free cell, drop kernel request (seq = %u)\n",
-			   nl_req.nlmsg_hdr.nlmsg_seq);
+		ip2gid_log_warn("Couldn't find free cell, drop kernel request (seq = %u)\n",
+				nl_req.nlmsg_hdr.nlmsg_seq);
 		goto loop;
 	}
 
 	pending->type = nl_req.nlmsg_hdr.nlmsg_type;
 	pending->seq = nl_req.nlmsg_hdr.nlmsg_seq;
-	ip2gid_log(IP2GID_LOG_INFO,
-		   "Sending (msg_id = %u) request\n", pending->seq);
+	ip2gid_log_info("Sending (msg_id = %u) request\n", pending->seq);
 
 	err = sendto(sockfd,
 		     req.data, req.data_len,
@@ -453,9 +447,8 @@ loop:
 		     &req_addr.sa, req_addr_size);
 
 	if (err != req.data_len) {
-		ip2gid_log(IP2GID_LOG_ERR,
-			   "Didn't send all data on wire(msg_id = %u)\n",
-			   pending->seq);
+		ip2gid_log_err("Didn't send all data on wire(msg_id = %u)\n",
+			       pending->seq);
 		free_cell_req(pending);
 	}
 

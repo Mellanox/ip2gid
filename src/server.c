@@ -92,9 +92,8 @@ static int server_fill_req(struct nl_ip2gid *priv,
 	    IP2GID_REQ_IPV4)
 		return -1;
 
-	ip2gid_log(IP2GID_LOG_INFO,
-		   "Got IP2GID request (msg_id = %u)\n",
-		   ntohl(req_hdr->msg_id));
+	ip2gid_log_info("Got IP2GID request (msg_id = %u)\n",
+			ntohl(req_hdr->msg_id));
 	err = server_find_gid(priv,
 			      (struct ip2gid_req_ipv4 *)req_hdr->tlvs, resp_hdr,
 			      (struct ip2gid_resp_gid *)resp_hdr->tlvs,
@@ -106,9 +105,8 @@ static int server_fill_req(struct nl_ip2gid *priv,
 	resp_hdr->msg_id = req_hdr->msg_id;
 	resp_hdr->num_tlvs = htons(resp_hdr->num_tlvs);
 	resp->data_len += sizeof(*resp_hdr);
-	ip2gid_log(IP2GID_LOG_INFO,
-		   "Filled good response (msg_id = %u)\n",
-		   ntohl(req_hdr->msg_id));
+	ip2gid_log_info("Filled good response (msg_id = %u)\n",
+			ntohl(req_hdr->msg_id));
 
 	return err;
 }
@@ -189,14 +187,12 @@ loop:
 		     &addr_len);
 
 	if (n <= 0) {
-		ip2gid_log(IP2GID_LOG_INFO,
-			   "recv from socket isn't good (err = %d)\n", n);
+		ip2gid_log_info("recv from socket isn't good (err = %d)\n", n);
 		goto loop;
 	}
 
 	if (msg_length_check(&req, n)) {
-		ip2gid_log(IP2GID_LOG_INFO,
-			   "Msg recvied isn't valid\n");
+		ip2gid_log_info("Msg recvied isn't valid\n");
 		goto loop;
 	}
 
