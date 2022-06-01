@@ -111,7 +111,7 @@ static int server_fill_req(struct nl_ip2gid *priv,
 	return err;
 }
 
-int create_server(struct nl_ip2gid *priv)
+int ipr_server_create(struct nl_ip2gid *priv)
 {
 	struct sockaddr_in serv_addr = {};
 	int reuse = 1;
@@ -167,7 +167,7 @@ err_ip4:
 	return err;
 }
 
-void *run_server(void *arg)
+void *run_ipr_server(void *arg)
 {
 	struct sockaddr_in addr = {};
 	struct ip2gid_obj resp = {};

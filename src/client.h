@@ -7,8 +7,8 @@
 
 #include "ip2gid.h"
 
-int create_client(struct nl_ip2gid *priv);
-void *run_client_recv(void *arg);
-void *run_client_send(void *arg);
+int ipr_client_create(struct nl_ip2gid *priv);
+void *run_ipr_client(void *arg);
 
+int ipr_resolve_req(const struct nl_ip2gid *ipr, const struct nl_msg *nl_req);
 #endif /* CLIENT_H */

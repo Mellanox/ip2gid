@@ -48,9 +48,15 @@ struct cell_req {
 struct nl_ip2gid {
 	int sockfd_c_ip4;
 	int sockfd_s_ip4;
-	int  nl_rdma;
 	unsigned int server_port;
 	struct nl_sock* nl_sock;
+};
+
+struct ib_resolve {
+	struct nl_ip2gid ipr;
+	pthread_t tid_ipr_client;
+	pthread_t tid_ipr_server;
+	pthread_t tid_nl_rdma;
 };
 
 int msg_length_check(struct ip2gid_obj *obj, uint32_t max_len);

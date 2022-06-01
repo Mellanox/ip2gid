@@ -25,10 +25,11 @@
 #include "log.h"
 #include "client.h"
 #include "server.h"
+#include "nl_rdma.h"
 
 #include "config.h"
 
-struct nl_ip2gid priv = {-1, -1, -1, 0, NULL};
+struct ib_resolve priv;
 
 static int server_port = IP2GID_SERVER_PORT;
 static unsigned int log_level = RESOLV_LOG_ALL;
@@ -77,43 +78,58 @@ static int parse_opt(int argc, char **argv)
 	return 0;
 }
 
+static int start_ip2gid_resolve(struct ib_resolve *ibr)
+{
+	int err;
+
+	ibr->ipr.server_port = server_port;
+
+	err = ipr_server_create(&ibr->ipr);
+	if (err)
+		return err;
+
+	err = ipr_client_create(&ibr->ipr);
+	if (err)
+		return err;
+
+	err = pthread_create(&ibr->tid_ipr_server, NULL,
+			     &run_ipr_server, &ibr->ipr);
+	if (err)
+		return err;
+
+	err = pthread_create(&ibr->tid_ipr_client, NULL,
+			     &run_ipr_client, &ibr->ipr);
+	if (err)
+		return err;
+
+	return 0;
+}
+
 int main(int argc, char **argv)
 {
-	pthread_t tid[3];
 	int err;
 
 	err = parse_opt(argc, argv);
 	if (err)
 		return err;
 
+	priv.ipr.server_port = server_port;
+
 	err = resolv_open_log(log_level);
 	if (err)
 		return err;
 
-	priv.server_port = server_port;
-	err = create_server(&priv);
+	err = start_ip2gid_resolve(&priv);
 	if (err)
 		return err;
 
-	err = create_client(&priv);
+	err = start_nl_rdma(&priv);
 	if (err)
 		return err;
 
-	err = pthread_create(&tid[0], NULL, &run_server, &priv);
-	if (err)
-		return err;
-
-	err = pthread_create(&tid[1], NULL, &run_client_send, &priv);
-	if (err)
-		return err;
-
-	err = pthread_create(&tid[2], NULL, &run_client_recv, &priv);
-	if (err)
-		return err;
-
-	pthread_join(tid[0], NULL);
-	pthread_join(tid[1], NULL);
-	pthread_join(tid[2], NULL);
+	pthread_join(priv.tid_ipr_client, NULL);
+	pthread_join(priv.tid_ipr_server, NULL);
+	pthread_join(priv.tid_nl_rdma, NULL);
 
 	return 0;
 }

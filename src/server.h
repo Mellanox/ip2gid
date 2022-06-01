@@ -7,8 +7,8 @@
 
 #include "ip2gid.h"
 
-int create_server(struct nl_ip2gid *priv);
+int ipr_server_create(struct nl_ip2gid *priv);
 
-void *run_server(void *arg);
+void *run_ipr_server(void *arg);
 
 #endif /* SERVER_H */

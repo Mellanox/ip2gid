@@ -14,6 +14,7 @@
 
 #include "client.h"
 #include "log.h"
+#include "nl_rdma.h"
 
 static int cells_used = 0;
 struct cell_req pending[DEFAULT_PENDING_REQUESTS] = {};
@@ -21,9 +22,8 @@ pthread_mutex_t lock_pending = PTHREAD_MUTEX_INITIALIZER;
 static int timeout_in_seconds = IP2GID_TIMEOUT_WAIT;
 static int timeout_in_pending_list = IP2GID_PENDING_TIMEOUT;
 
-int create_client(struct nl_ip2gid *priv)
+int ipr_client_create(struct nl_ip2gid *ipr)
 {
-	struct sockaddr_nl src_addr = {};
 	struct timeval tv;
 	int reuse = 1;
 	int err = 0;
@@ -32,7 +32,7 @@ int create_client(struct nl_ip2gid *priv)
 	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 
 	if (sockfd >= 0)
-		priv->sockfd_c_ip4 = sockfd;
+		ipr->sockfd_c_ip4 = sockfd;
 	else
 		return errno;
 
@@ -58,33 +58,11 @@ int create_client(struct nl_ip2gid *priv)
 	}
 #endif
 
-	sockfd = socket(PF_NETLINK, SOCK_RAW, NETLINK_RDMA);
-	if (sockfd < 0) {
-		err = errno;
-		goto free_sock_c_ip4;
-	}
-
-	priv->nl_rdma = sockfd;
-
-	src_addr.nl_family = AF_NETLINK;
-	src_addr.nl_pid = getpid();
-	src_addr.nl_groups = (1 << (RDMA_NL_GROUP_LS - 1));
-
-	err = bind(priv->nl_rdma, (struct sockaddr *)&src_addr,
-		   sizeof(src_addr));
-	if (err < 0) {
-		err = errno;
-		goto free_nl_rdma;
-	}
-
 	return 0;
 
-free_nl_rdma:
-	close(priv->nl_rdma);
-	priv->nl_rdma = -1;
 free_sock_c_ip4:
-	close(priv->sockfd_c_ip4);
-	priv->sockfd_c_ip4 = -1;
+	close(ipr->sockfd_c_ip4);
+	ipr->sockfd_c_ip4 = -1;
 
 	return err;
 }
@@ -122,13 +100,13 @@ static int client_nl_rdma_parse_ip_attr(struct nlattr *attr,
 		break;
 
 	default:
-		return -EINVAL;
+		return EINVAL;
 	}
 
 	return ret;
 }
 
-static int client_nl_rdma_process_ip(struct nl_msg *nl_req,
+static int client_nl_rdma_process_ip(const struct nl_msg *nl_req,
 				     union addr_sa *addr,
 				     socklen_t *addr_size,
 				     struct ip2gid_obj *req,
@@ -167,32 +145,6 @@ static int client_nl_rdma_process_ip(struct nl_msg *nl_req,
 	}
 
 	return status;
-}
-
-static void client_nl_send_bad_resp(struct nl_ip2gid *priv,
-				    struct nl_msg *nl_req)
-{
-	struct sockaddr_nl dst_addr = {};
-	struct nl_msg resp_msg = {};
-	int datalen;
-	int ret;
-
-	dst_addr.nl_family = AF_NETLINK;
-	dst_addr.nl_groups = (1 << (RDMA_NL_GROUP_LS - 1));
-
-	resp_msg.nlmsg_hdr.nlmsg_len = NLMSG_HDRLEN;
-	resp_msg.nlmsg_hdr.nlmsg_pid = getpid();
-	resp_msg.nlmsg_hdr.nlmsg_type = nl_req->nlmsg_hdr.nlmsg_type;
-	resp_msg.nlmsg_hdr.nlmsg_seq = nl_req->nlmsg_hdr.nlmsg_seq;
-
-	resp_msg.nlmsg_hdr.nlmsg_flags |= RDMA_NL_LS_F_ERR;
-
-	datalen = NLMSG_ALIGN(resp_msg.nlmsg_hdr.nlmsg_len);
-	ret = sendto(priv->nl_rdma, &resp_msg, datalen, 0,
-		     (void *)&dst_addr,
-		     (socklen_t)sizeof(dst_addr));
-	if (ret != datalen)
-		ip2gid_log_err("Response wasn't sent to kernel in full\n");
 }
 
 static void free_cell_req(struct cell_req *pending)
@@ -249,84 +201,93 @@ static void clear_timeout_cell_req(void)
 			cells_used, DEFAULT_PENDING_REQUESTS);
 }
 
-static int client_ip_recv(struct nl_ip2gid *priv,
-			  union addr_sa *addr,
-			  socklen_t *addr_size,
-			  struct ip2gid_obj *req,
-			  struct nl_msg *nl_req)
+static int client_send_ipr_req(const struct nl_ip2gid *ipr,
+			       const struct nl_msg *nl_req,
+			       const struct ip2gid_obj *req,
+			       union addr_sa *req_addr,
+			       socklen_t req_addr_size)
 {
-	struct ip2gid_hdr *req_hdr;
 	struct cell_req *pending;
-	uint16_t client_idx;
-	uint16_t op;
-	int err;
+	int err = 0, sz;
 
-recv_again:
-	memset(req, 0, sizeof(*req));
-	memset(addr, 0, sizeof(*addr));
-	memset(nl_req, 0, sizeof(*nl_req));
-	err = recv(priv->nl_rdma, nl_req, sizeof(*nl_req), 0);
-	if (err <= 0)
-		goto recv_again;
-
-	ip2gid_log_info("Got a new kernel request\n");
-        if (!NLMSG_OK(&nl_req->nlmsg_hdr, err))
-                goto recv_again;
-
-	client_idx = RDMA_NL_GET_CLIENT(nl_req->nlmsg_hdr.nlmsg_type);
-        op = RDMA_NL_GET_OP(nl_req->nlmsg_hdr.nlmsg_type);
-        if (client_idx != RDMA_NL_LS)
-                goto recv_again;
-
-	if (op != RDMA_NL_LS_OP_IP_RESOLVE) {
-		client_nl_send_bad_resp(priv, nl_req);
-		goto recv_again;
+	pthread_mutex_lock(&lock_pending);
+	clear_timeout_cell_req();
+	pending = find_cell_req();
+	if (!pending) {
+		pthread_mutex_unlock(&lock_pending);
+		ip2gid_log_warn("Couldn't find free cell, drop kernel request (seq = %u)\n",
+				nl_req->nlmsg_hdr.nlmsg_seq);
+		return EBUSY;
 	}
+
+	pending->type = nl_req->nlmsg_hdr.nlmsg_type;
+	pending->seq = nl_req->nlmsg_hdr.nlmsg_seq;
+	ip2gid_log_info("Sending (msg_id = %u) request\n", pending->seq);
+
+	sz = sendto(ipr->sockfd_c_ip4,
+		     req->data, req->data_len, 0,
+		     &req_addr->sa, req_addr_size);
+
+	if (sz != req->data_len) {
+		ip2gid_log_err("Didn't send all data on wire(msg_id = %u), sent %d expect %d\n",
+			       pending->seq, sz, req->data_len);
+		free_cell_req(pending);
+		err = errno;
+	}
+
+	pthread_mutex_unlock(&lock_pending);
+	return err;
+}
+
+int ipr_resolve_req(const struct nl_ip2gid *ipr, const struct nl_msg *nl_req)
+{
+	struct ip2gid_obj req = {};
+	struct ip2gid_hdr *req_hdr;
+	socklen_t addr_size;
+	union addr_sa addr;
+	struct cell_req *pnd;
+	int err;
 
 	if ((nl_req->nlmsg_hdr.nlmsg_len - NLMSG_HDRLEN) <
 	    (sizeof(struct rdma_ls_ip_resolve_header) +
 	     sizeof(struct nlattr)))
-		goto recv_again;
+		return EINVAL;
 
-	err = client_nl_rdma_process_ip(nl_req, addr, addr_size,
-					req, priv->server_port);
+	err = client_nl_rdma_process_ip(nl_req, &addr, &addr_size,
+					&req, ipr->server_port);
 
-	if (err)
-		goto recv_again;
+	if (err) {
+		ip2gid_log_err("process_ip failed %d", err);
+		return EINVAL;
+	}
 
 	pthread_mutex_lock(&lock_pending);
 	clear_timeout_cell_req();
-	pending = find_cell_req_seq(nl_req->nlmsg_hdr.nlmsg_seq);
-	if (pending) {
+	pnd = find_cell_req_seq(nl_req->nlmsg_hdr.nlmsg_seq);
+	if (pnd) {
 		pthread_mutex_unlock(&lock_pending);
 		ip2gid_log_warn("Got a request(seq = %u) that is already pending, dropping\n",
 				nl_req->nlmsg_hdr.nlmsg_seq);
-		goto recv_again;
+		return EEXIST;
 	}
 	pthread_mutex_unlock(&lock_pending);
 
-	req->data_len += sizeof(*req_hdr);
-	req_hdr = (struct ip2gid_hdr *)req->data;
+	req.data_len += sizeof(*req_hdr);
+	req_hdr = (struct ip2gid_hdr *)req.data;
 	req_hdr->version = htons(IP2GID_CURRENT_VERSION);
 	req_hdr->msg_id = htonl(nl_req->nlmsg_hdr.nlmsg_seq);
 	req_hdr->num_tlvs = htons(req_hdr->num_tlvs);
 
-	return 0;
+	return client_send_ipr_req(ipr, nl_req, &req, &addr, addr_size);
 }
 
 static void client_nl_rdma_send_resp(struct nl_ip2gid *priv,
 				     struct cell_req *orig_req,
 				     struct ip2gid_hdr *resp_hdr)
 {
-	struct sockaddr_nl dst_addr = {};
 	struct ip2gid_resp_gid *gid_resp;
 	struct nl_msg resp_msg = {};
 	struct nlattr *attr;
-	int datalen;
-	int ret;
-
-	dst_addr.nl_family = AF_NETLINK;
-	dst_addr.nl_groups = (1 << (RDMA_NL_GROUP_LS - 1));
 
 	resp_msg.nlmsg_hdr.nlmsg_len = NLMSG_HDRLEN;
         resp_msg.nlmsg_hdr.nlmsg_pid = getpid();
@@ -344,15 +305,10 @@ static void client_nl_rdma_send_resp(struct nl_ip2gid *priv,
 	       sizeof(gid_resp->gid));
 	resp_msg.nlmsg_hdr.nlmsg_len += attr->nla_len;
 
-	datalen = NLMSG_ALIGN(resp_msg.nlmsg_hdr.nlmsg_len);
-	ret = sendto(priv->nl_rdma, &resp_msg, datalen, 0,
-		     (void *)&dst_addr,
-		     (socklen_t)sizeof(dst_addr));
-	if (ret != datalen)
-		ip2gid_log_err("Response wasn't sent to kernel in full\n");
+	nl_rdma_send_resp(&resp_msg);
 }
 
-void *run_client_recv(void *arg)
+void *run_ipr_client(void *arg)
 {
 	union addr_sa resp_addr = {};
 	struct nl_ip2gid *priv = arg;
@@ -372,7 +328,6 @@ loop:
 
 	err = recvfrom(sockfd, resp.data, sizeof(resp.data),
 		       MSG_WAITALL, &resp_addr.sa, &resp_addr_size);
-
 	if (err <= 0)
 		goto loop;
 
@@ -403,56 +358,6 @@ loop:
 	pthread_mutex_unlock(&lock_pending);
 	client_nl_rdma_send_resp(priv, &pending, resp_hdr);
 
-	goto loop;
-
-	return NULL;
-}
-
-void *run_client_send(void *arg)
-{
-	struct nl_ip2gid *priv = arg;
-	union addr_sa req_addr = {};
-	struct ip2gid_obj req = {};
-	struct nl_msg nl_req = {};
-	struct cell_req *pending;
-	socklen_t req_addr_size;
-	ssize_t err;
-	int sockfd;
-
-	sockfd = priv->sockfd_c_ip4;
-
-loop:
-	err = client_ip_recv(priv, &req_addr, &req_addr_size,
-			     &req, &nl_req);
-	if (err)
-		goto loop;
-
-	pthread_mutex_lock(&lock_pending);
-	clear_timeout_cell_req();
-	pending = find_cell_req();
-	if (!pending) {
-		pthread_mutex_unlock(&lock_pending);
-		ip2gid_log_warn("Couldn't find free cell, drop kernel request (seq = %u)\n",
-				nl_req.nlmsg_hdr.nlmsg_seq);
-		goto loop;
-	}
-
-	pending->type = nl_req.nlmsg_hdr.nlmsg_type;
-	pending->seq = nl_req.nlmsg_hdr.nlmsg_seq;
-	ip2gid_log_info("Sending (msg_id = %u) request\n", pending->seq);
-
-	err = sendto(sockfd,
-		     req.data, req.data_len,
-		     0,
-		     &req_addr.sa, req_addr_size);
-
-	if (err != req.data_len) {
-		ip2gid_log_err("Didn't send all data on wire(msg_id = %u)\n",
-			       pending->seq);
-		free_cell_req(pending);
-	}
-
-	pthread_mutex_unlock(&lock_pending);
 	goto loop;
 
 	return NULL;
