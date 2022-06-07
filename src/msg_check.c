@@ -3,7 +3,7 @@
  * Copyright (c) 2021 NVIDIA CORPORATION. All rights reserved
  */
 
-#include "ip2gid.h"
+#include "ib_resolve.h"
 #include "log.h"
 
 int msg_length_check(struct ip2gid_obj *obj, uint32_t max_len)

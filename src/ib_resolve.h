@@ -2,8 +2,8 @@
 /*
  * Copyright (c) 2021 NVIDIA CORPORATION. All rights reserved
  */
-#ifndef _IP2GID_H
-#define _IP2GID_H
+#ifndef _IB_RESOLVE_H
+#define _IB_RESOLVE_H
 
 #include <linux/rtnetlink.h>
 #include <netlink/netlink.h>
@@ -60,4 +60,4 @@ struct ib_resolve {
 };
 
 int msg_length_check(struct ip2gid_obj *obj, uint32_t max_len);
-#endif	/* _IP2GID_H */
+#endif	/* _IB_RESOLVE_H */

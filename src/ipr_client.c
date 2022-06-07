@@ -12,7 +12,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "client.h"
+#include "ipr_client.h"
 #include "log.h"
 #include "nl_rdma.h"
 

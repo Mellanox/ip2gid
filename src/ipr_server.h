@@ -2,13 +2,13 @@
 /*
  * Copyright (c) 2021 NVIDIA CORPORATION. All rights reserved
  */
-#ifndef _SERVER_H
-#define _SERVER_H
+#ifndef _IPR_SERVER_H
+#define _IPR_SERVER_H
 
-#include "ip2gid.h"
+#include "ib_resolve.h"
 
 int ipr_server_create(struct nl_ip2gid *priv);
 
 void *run_ipr_server(void *arg);
 
-#endif /* SERVER_H */
+#endif /* _IPR_SERVER_H */

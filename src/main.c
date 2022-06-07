@@ -21,10 +21,10 @@
 #include <getopt.h>
 #include <msg_spec.h>
 
-#include "ip2gid.h"
+#include "ib_resolve.h"
 #include "log.h"
-#include "client.h"
-#include "server.h"
+#include "ipr_client.h"
+#include "ipr_server.h"
 #include "nl_rdma.h"
 
 #include "config.h"

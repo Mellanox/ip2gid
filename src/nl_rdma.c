@@ -13,7 +13,7 @@
 #include <unistd.h>
 
 #include "log.h"
-#include "client.h"
+#include "ipr_client.h"
 
 static int sock_nl_fd;
 

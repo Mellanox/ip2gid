@@ -6,7 +6,7 @@
 #ifndef _NL_RDMA_H
 #define _NL_RDMA_H
 
-#include "ip2gid.h"
+#include "ib_resolve.h"
 
 int start_nl_rdma(struct ib_resolve *priv);
 

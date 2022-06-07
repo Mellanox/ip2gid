@@ -14,7 +14,7 @@
 #include <unistd.h>
 
 #include "log.h"
-#include "server.h"
+#include "ipr_server.h"
 
 static int server_find_gid(struct nl_ip2gid *priv,
 			   struct ip2gid_req_ipv4 *req,
