@@ -67,9 +67,6 @@ free_sock_c_ip4:
 	return err;
 }
 
-#define NLA_LEN(nla) ((nla)->nla_len - NLA_HDRLEN)
-#define NLA_DATA(nla) ((char *)(nla) + NLA_HDRLEN)
-
 static int client_nl_rdma_parse_ip_attr(struct nlattr *attr,
 					union addr_sa *addr,
 					socklen_t *addr_size,

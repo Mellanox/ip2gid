@@ -26,6 +26,7 @@
 #include "ipr_client.h"
 #include "ipr_server.h"
 #include "nl_rdma.h"
+#include "path_resolve.h"
 
 #include "config.h"
 
@@ -105,6 +106,26 @@ static int start_ip2gid_resolve(struct ib_resolve *ibr)
 	return 0;
 }
 
+static int start_path_resolve(struct ib_resolve *ibr)
+{
+	int err;
+
+	err = path_resolve_init();
+	if (err)
+		return err;
+
+	err = pthread_create(&ibr->tid_path_resolve, NULL,
+			     &run_path_resolve, NULL);
+	if (err)
+		goto fail;
+
+	return 0;
+
+fail:
+	path_resolve_done();
+	return err;
+}
+
 int main(int argc, char **argv)
 {
 	int err;
@@ -123,12 +144,17 @@ int main(int argc, char **argv)
 	if (err)
 		return err;
 
+	err = start_path_resolve(&priv);
+	if (err)
+		return err;
+
 	err = start_nl_rdma(&priv);
 	if (err)
 		return err;
 
 	pthread_join(priv.tid_ipr_client, NULL);
 	pthread_join(priv.tid_ipr_server, NULL);
+	pthread_join(priv.tid_path_resolve, NULL);
 	pthread_join(priv.tid_nl_rdma, NULL);
 
 	return 0;

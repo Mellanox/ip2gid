@@ -5,8 +5,10 @@
 #ifndef _IB_RESOLVE_H
 #define _IB_RESOLVE_H
 
+#include <infiniband/sa.h>
 #include <linux/rtnetlink.h>
 #include <netlink/netlink.h>
+#include <rdma/rdma_netlink.h>
 
 #include "msg_spec.h"
 
@@ -14,9 +16,10 @@
 
 #define IP2GID_SERVER_PORT 4791
 #define IP2GID_TIMEOUT_WAIT 2
-#define IP2GID_NL_MAX_PAYLOAD 72
 #define DEFAULT_PENDING_REQUESTS 500
 #define IP2GID_PENDING_TIMEOUT 60
+
+#define IBR_NL_MAX_PAYLOAD 512
 
 union addr_sa {
 	struct sockaddr sa;
@@ -30,10 +33,14 @@ struct ip2gid_obj {
 		sizeof(struct ip2gid_resp_gid)];
 };
 
+#define NLA_LEN(nla) ((nla)->nla_len - NLA_HDRLEN)
+#define NLA_DATA(nla) ((char *)(nla) + NLA_HDRLEN)
+
 struct nl_msg {
 	struct nlmsghdr nlmsg_hdr;
 	union {
-		uint8_t data[IP2GID_NL_MAX_PAYLOAD];
+		uint8_t data[IBR_NL_MAX_PAYLOAD];
+		struct rdma_ls_resolve_header rheader;
 		struct nlattr attr[0];
 	};
 };
@@ -56,6 +63,7 @@ struct ib_resolve {
 	struct nl_ip2gid ipr;
 	pthread_t tid_ipr_client;
 	pthread_t tid_ipr_server;
+	pthread_t tid_path_resolve;
 	pthread_t tid_nl_rdma;
 };
 

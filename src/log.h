@@ -39,6 +39,15 @@ enum {
 #define nl_log_err(format, ...) \
 	resolv_write(RESOLV_LOG_ERR, " %s: "format, __func__, ## __VA_ARGS__)
 
+#define path_info(format, ...) \
+	resolv_write(RESOLV_LOG_INFO, " <PR> %s: "format, __func__, ## __VA_ARGS__)
+
+#define path_warn(format, ...) \
+	resolv_write(RESOLV_LOG_WARN, " <PR> %s: "format, __func__, ## __VA_ARGS__)
+
+#define path_err(format, ...) \
+	resolv_write(RESOLV_LOG_ERR, " <PR> %s: "format, __func__, ## __VA_ARGS__)
+
 void resolv_write(int level, const char *format, ...);
 int resolv_open_log(int log_level);
 void resolv_inet_ntop(int level, int af,

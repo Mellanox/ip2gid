@@ -27,8 +27,8 @@ endif()
 set(CMAKE_C_COMPILER_NAMES gcc clang)
 include_directories("include")
 add_executable(ip2gid
-	src/main.c src/log.c src/msg_check.c src/ipr_client.c src/ipr_server.c src/nl_rdma.c)
-target_compile_options(ip2gid PRIVATE -Wall)
+	src/main.c src/log.c src/msg_check.c src/ipr_client.c src/ipr_server.c src/nl_rdma.c src/path_resolve.c)
+target_compile_options(ip2gid PRIVATE -Wall -O0 -g)
 
 set(SEARCHPATHS
 	/opt/local
@@ -67,7 +67,24 @@ if (LibNL3_ROUTE_LIBRARY)
 else()
 	message(FATAL_ERROR "Could not find libnl-route-3-dev")
 endif()
-target_link_libraries(ip2gid ${CMAKE_THREAD_LIBS_INIT} ${LibNL3_LIBRARY} ${LibNL3_ROUTE_LIBRARY})
+
+#libibverbs
+find_library(LibIBVERBS_LIBRARY NAMES ibverbs)
+if (LibIBVERBS_LIBRARY)
+	message(STATUS "Found libibverbs")
+else()
+	message(FATAL_ERROR "Could not find libibverbs")
+endif()
+
+#libibumad
+find_library(LibIBUMAD_LIBRARY NAMES ibumad)
+if (LibIBUMAD_LIBRARY)
+	message(STATUS "Found libibumad")
+else()
+	message(FATAL_ERROR "Could not find libibumad")
+endif()
+
+target_link_libraries(ip2gid ${CMAKE_THREAD_LIBS_INIT} ${LibNL3_LIBRARY} ${LibNL3_ROUTE_LIBRARY} ${LibIBVERBS_LIBRARY} ${LibIBUMAD_LIBRARY})
 include_directories(${NL_INCLUDE_DIRS})
 set(CMAKE_REQUIRED_INCLUDES "${NL_INCLUDE_DIRS}")
 set(CMAKE_REQUIRED_INCLUDES "${NL_INCLUDE_DIRS}")

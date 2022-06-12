@@ -14,6 +14,7 @@
 
 #include "log.h"
 #include "ipr_client.h"
+#include "path_resolve.h"
 
 static int sock_nl_fd;
 
@@ -109,6 +110,12 @@ loop:
 	op = RDMA_NL_GET_OP(req.nlmsg_hdr.nlmsg_type);
 	nl_log_info("Got a new kernel request type %d op %d\n", type, op);
 	switch (op) {
+	case RDMA_NL_LS_OP_RESOLVE:
+		err = path_resolve_req(&req);
+		if (err)
+			nl_log_err("Failed to do path_resolve\n");
+		break;
+
 	case RDMA_NL_LS_OP_IP_RESOLVE:
 		err = ipr_resolve_req(&priv->ipr, &req);
 		if (err)
