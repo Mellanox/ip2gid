@@ -469,20 +469,72 @@ struct nl_pr {
 	struct ib_path_rec_data rec;
 };
 
+#define IB_LID_PERMISSIVE 65535
+
+/* flid is embedded in gid:
+ * | 10b | 22b of 0 | 16b of FLID | 16b of SubNet Prefix | 64b of EUI |
+ */
+static __u16 get_flid_from_gid(union ibv_gid *gid)
+{
+	return htobe16(*(__u16*)(gid->raw + 4));
+}
+
+static void set_pr_unidir(struct nl_pr *pr, struct umad_sa_packet *sa,
+			  __u16 sflid, __u16 dflid, int flags)
+{
+	struct ibv_path_record *path;
+
+	path = (struct ibv_path_record *)pr->rec.path_rec;
+	pr->attr.nla_type = LS_NLA_TYPE_PATH_RECORD;
+	pr->attr.nla_len = sizeof(*pr);
+	pr->rec.flags = flags;
+	memcpy(path, sa->data, sizeof(*pr));
+
+	path->reversible_numpath = 0;
+	if (flags & IB_PATH_OUTBOUND) {
+		path->dlid = htobe16(dflid);
+	} else {
+		path->slid = htobe16(IB_LID_PERMISSIVE);
+		path->dlid = htobe16(sflid);
+	}
+}
+
 static int send_resp(struct ib_user_mad *umad,
 		     struct umad_sa_packet *sa,
 		     uint32_t type, uint32_t seq, uint8_t path_use)
 {
 	struct nl_msg resp = {};
 	struct nl_pr *pr = (struct nl_pr *)resp.data;
-	int datalen, ret;
+	struct ibv_path_record *path;
+	int datalen, tlen = 0, ret;
+	__u16 sflid, dflid;
 
 	pr->attr.nla_type = LS_NLA_TYPE_PATH_RECORD;
 	pr->attr.nla_len = sizeof(*pr);
 	pr->rec.flags = get_rec_flags(path_use);
 	memcpy(pr->rec.path_rec, sa->data, sizeof(*pr));
+	tlen += sizeof(*pr);
+	pr++;
 
-	resp.nlmsg_hdr.nlmsg_len = NLMSG_HDRLEN + pr->attr.nla_len;
+	path = (struct ibv_path_record *)sa->data;
+	if ((path_use == LS_RESOLVE_PATH_USE_ALL) &&
+	    (be32toh(path->flowlabel_hoplimit) & 0xff)) {
+		sflid = get_flid_from_gid(&path->sgid);
+		dflid = get_flid_from_gid(&path->dgid);
+		if (sflid && dflid) {
+			set_pr_unidir(pr, sa, sflid, dflid,
+				      IB_PATH_PRIMARY | IB_PATH_INBOUND);
+			tlen += sizeof(*pr);
+			pr++;
+
+			set_pr_unidir(pr, sa, sflid, dflid,
+				      IB_PATH_PRIMARY | IB_PATH_OUTBOUND);
+			tlen += sizeof(*pr);
+			pr++;
+		}
+	}
+
+	resp.nlmsg_hdr.nlmsg_len = NLMSG_HDRLEN + tlen;
         resp.nlmsg_hdr.nlmsg_pid = getpid();
 	resp.nlmsg_hdr.nlmsg_type = type;
 	resp.nlmsg_hdr.nlmsg_seq = seq;
