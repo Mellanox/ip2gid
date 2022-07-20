@@ -33,7 +33,7 @@
 struct ib_resolve priv;
 
 static int server_port = IP2GID_SERVER_PORT;
-static unsigned int log_level = RESOLV_LOG_ALL;
+static unsigned int log_level = RESOLV_LOG_INFO;
 
 static void show_usage(char *program)
 {

@@ -194,7 +194,7 @@ static void clear_timeout_cell_req(void)
 			free_cell_req(&pending[i]);
 
 	}
-	ip2gid_log_info("Have %d cells used out of: %d\n",
+	ip2gid_log_warn("Have %d cells used out of: %d\n",
 			cells_used, DEFAULT_PENDING_REQUESTS);
 }
 
@@ -219,7 +219,7 @@ static int client_send_ipr_req(const struct nl_ip2gid *ipr,
 
 	pending->type = nl_req->nlmsg_hdr.nlmsg_type;
 	pending->seq = nl_req->nlmsg_hdr.nlmsg_seq;
-	ip2gid_log_info("Sending (msg_id = %u) request\n", pending->seq);
+	ip2gid_log_dbg("Sending (msg_id = %u) request\n", pending->seq);
 
 	sz = sendto(ipr->sockfd_c_ip4,
 		     req->data, req->data_len, 0,

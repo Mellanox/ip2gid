@@ -15,6 +15,7 @@
 
 enum {
 	RESOLV_LOG_ALL,
+	RESOLV_LOG_DBG = RESOLV_LOG_ALL,
 	RESOLV_LOG_INFO,
 	RESOLV_LOG_WARN,
 	RESOLV_LOG_ERR,
@@ -22,7 +23,7 @@ enum {
 };
 
 #define ip2gid_log_dbg(format, ...) \
-	resolv_write(RESOLV_LOG_ALL, " <IPR> %s: "format, __func__, ## __VA_ARGS__)
+	resolv_write(RESOLV_LOG_DBG, " <IPR> %s: "format, __func__, ## __VA_ARGS__)
 
 #define ip2gid_log_info(format, ...) \
 	resolv_write(RESOLV_LOG_INFO, " <IPR> %s: "format, __func__, ## __VA_ARGS__)
@@ -38,6 +39,9 @@ enum {
 
 #define nl_log_err(format, ...) \
 	resolv_write(RESOLV_LOG_ERR, " %s: "format, __func__, ## __VA_ARGS__)
+
+#define path_dbg(format, ...) \
+	resolv_write(RESOLV_LOG_DBG, " <PR> %s: "format, __func__, ## __VA_ARGS__)
 
 #define path_info(format, ...) \
 	resolv_write(RESOLV_LOG_INFO, " <PR> %s: "format, __func__, ## __VA_ARGS__)

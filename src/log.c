@@ -19,6 +19,8 @@ static pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static char *log_level_str(int level)
 {
+	if (level == RESOLV_LOG_DBG)
+		return "DBG";
 	if (level == RESOLV_LOG_INFO)
 		return "INFO";
 	if (level == RESOLV_LOG_WARN)

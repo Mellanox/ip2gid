@@ -360,7 +360,7 @@ static int req_nlmsg_resolve_path(const struct nl_msg *msg,
 
 	inet_ntop(AF_INET6, path->dgid.raw, dgid, sizeof(dgid));
 	inet_ntop(AF_INET6, path->sgid.raw, sgid, sizeof(sgid));
-	path_info("Request PR: %s/%d: path_use %d, service_id 0x%llx "
+	path_dbg("Request PR: %s/%d: path_use %d, service_id 0x%llx "
 		  "dgid %s sgid %s tclass 0x%x pkey 0x%x qosclass_sl 0x%x, cmask 0x%llx\n",
 		  msg->rheader.device_name, msg->rheader.port_num, msg->rheader.path_use,
 		  be64toh(path->service_id), dgid, sgid, path->tclass, be16toh(path->pkey),
@@ -429,9 +429,9 @@ int path_resolve_req(const struct nl_msg *msg)
 	req->nlseq = msg->nlmsg_hdr.nlmsg_seq;
 	req->nltype = msg->nlmsg_hdr.nlmsg_type;
 	req->path_use = msg->rheader.path_use;
-	path_info("Get req from %s/%d: slot %d, tid 0x%llx, nlseq 0x%x, path_use %d\n",
-		  msg->rheader.device_name, msg->rheader.port_num, reqid, req->tid,
-		  req->nlseq, req->nltype, msg->rheader.path_use);
+	path_dbg("Get req from %s/%d: slot %d, tid 0x%llx, nlseq 0x%x, path_use %d\n",
+		 msg->rheader.device_name, msg->rheader.port_num, reqid, req->tid,
+		 req->nlseq, req->nltype, msg->rheader.path_use);
 
 	umad_set_addr(umad, uport->umad_port.sm_lid, 1,
 		      uport->umad_port.sm_sl, UMAD_QKEY);
@@ -493,9 +493,11 @@ static void set_pr_unidir(struct nl_pr *pr, struct umad_sa_packet *sa,
 	path->reversible_numpath = 0;
 	if (flags & IB_PATH_OUTBOUND) {
 		path->dlid = htobe16(dflid);
+		path_info("outbound: slid %d, dlid %d\n", be16toh(path->slid), dflid);
 	} else {
 		path->slid = htobe16(IB_LID_PERMISSIVE);
 		path->dlid = htobe16(sflid);
+		path_info("inbound: slid %d, dlid %d\n", IB_LID_PERMISSIVE, sflid);
 	}
 }
 
@@ -517,6 +519,10 @@ static int send_resp(struct ib_user_mad *umad,
 	pr++;
 
 	path = (struct ibv_path_record *)sa->data;
+	path_dbg("SM PR slid %d, dlid %d, hoplimit %d\n",
+		 be16toh(path->slid), be16toh(path->dlid),
+		 be32toh(path->flowlabel_hoplimit) & 0xff);
+
 	if ((path_use == LS_RESOLVE_PATH_USE_ALL) &&
 	    (be32toh(path->flowlabel_hoplimit) & 0xff)) {
 		sflid = get_flid_from_gid(&path->sgid);
@@ -589,7 +595,7 @@ static int recv_one_mad(int uport_id)
 		return err;
 	}
 
-	path_info("mad received len %d: agent_id 0x%x, status 0x%x, timeout_ms 0x%x, length 0x%x,"
+	path_dbg("mad received len %d: agent_id 0x%x, status 0x%x, timeout_ms 0x%x, length 0x%x,"
 		  "sa method 0x%x status 0x%x attr_id 0x%x, tid 0x%llx\n",
 		  len, umad->agent_id, umad->status, umad->timeout_ms, umad->length,
 		  sa->mad_hdr.method, sa->mad_hdr.status, be16toh(sa->mad_hdr.attr_id),
