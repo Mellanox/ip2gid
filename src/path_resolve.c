@@ -39,8 +39,12 @@ struct pr_req {
 	uint8_t path_use;
 	__be64 comp_mask;
 	uint64_t tid;		/* Transaction ID */
+
+	struct timespec stamp;
 };
 
+#define PENDING_REQ_THRESHHOLD  (DEFAULT_PENDING_REQUESTS / 3)
+#define PR_PENDING_TIMEOUT 60		/* seconds */
 struct path_req_ctl {
 	struct pr_req reqs[DEFAULT_PENDING_REQUESTS];
 	pthread_mutex_t lock;
@@ -69,6 +73,8 @@ static int req_slot_alloc(void)
 
 	ctl.next_tid++;
 	ctl.outstanding_req_num++;
+
+	clock_gettime(CLOCK_REALTIME, &ctl.reqs[i].stamp);
 out:
 	pthread_mutex_unlock(&ctl.lock);
 	return i;
@@ -396,6 +402,33 @@ struct pr_umad_port *find_uport(const char *devname, int port_num)
 	return NULL;
 }
 
+#define PR_PENDING_CLEAR_NUM 10	/* How many slots to clear in each time */
+static void clear_timeout_req(void)
+{
+	struct timespec now;
+	int i, cleared = 0;
+
+	pthread_mutex_lock(&ctl.lock);
+	if (ctl.outstanding_req_num < PENDING_REQ_THRESHHOLD)
+		goto out;
+
+	clock_gettime(CLOCK_REALTIME, &now);
+	for (i = 0; i < DEFAULT_PENDING_REQUESTS; i++) {
+		if (!ctl.reqs[i].in_use ||
+		    (now.tv_sec - ctl.reqs[i].stamp.tv_sec) <
+		    PR_PENDING_TIMEOUT)
+			continue;
+
+		path_warn("Clear timeout req %d: nltype %d seq %d, tid %llx\n",
+			  i, ctl.reqs[i].nltype, ctl.reqs[i].nlseq, ctl.reqs[i].tid);
+		__req_slot_release(&ctl.reqs[i]);
+		if (++cleared >= PR_PENDING_CLEAR_NUM)
+			break;
+	}
+out:
+	pthread_mutex_unlock(&ctl.lock);
+}
+
 int path_resolve_req(const struct nl_msg *msg)
 {
 	int reqid, err, len = sizeof(struct umad_hdr) + UMAD_LEN_DATA;
@@ -447,12 +480,14 @@ int path_resolve_req(const struct nl_msg *msg)
 		path_err("umad_send failed %d\n", err);
 
 	free(umad);
+	clear_timeout_req();
 	return err;
 
 fail_resolve_path:
 	req_slot_release(req);
 fail_req_slot:
 	free(umad);
+	clear_timeout_req();
 	return err;
 }
 
