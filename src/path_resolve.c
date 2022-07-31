@@ -26,9 +26,27 @@ struct pr_umad_port {
 	int agentid;
 };
 
-#define MAX_UMAD_PORTS 16
+#define MAX_UMAD_PORTS 32
 static struct pr_umad_port uports[MAX_UMAD_PORTS];
 static unsigned int umad_port_num;
+
+struct arr_port {
+	struct pr_umad_port *uport;
+	uint8_t link_layer;
+};
+
+#define MAX_PORTS_PER_DEVICE 4
+struct arr_device {
+	const char *name;
+	struct ibv_device *ibdev;
+	struct ibv_context *ibctx;
+	unsigned int port_cnt;
+	struct arr_port ports[MAX_PORTS_PER_DEVICE];
+};
+
+static struct ibv_device **ibdev_list;
+static struct arr_device *arrdevs;
+static int ibdev_num;
 
 #define PR_TIMEOUT 2000		/* ms */
 struct pr_req {
@@ -116,78 +134,69 @@ static int __req_slot_find(uint64_t tid)
 	return i;
 }
 
-static int path_resolve_init_one(const char *ibname, int port)
+static int path_resolve_init_one(struct arr_port *arrport)
 {
-	struct pr_umad_port *uport;
+	struct pr_umad_port *uport = arrport->uport;
 	int err;
-
-	if (umad_port_num >= MAX_UMAD_PORTS)
-		return -ENOMEM;
-
-	uport = uports + umad_port_num;
-
-	err = umad_get_port(ibname, port, &uport->umad_port);
-	if (err) {
-		path_err("umad_get_port(%s, %d) failed %d\n",
-			     ibname, port, err);
-		return err;
-	}
 
 	uport->portid = umad_open_port(uport->umad_port.ca_name,
 				       uport->umad_port.portnum);
 	if (uport->portid < 0) {
 		path_err("umad_open_port failed: %s/%d, err %d\n",
-			 ibname, port, errno);
-		err = errno;
-		goto fail_open_port;
+			 uport->umad_port.ca_name, uport->umad_port.portnum, errno);
+		return errno;
 	}
 
 	uport->agentid = umad_register(uport->portid, UMAD_CLASS_SUBN_ADM,
 				       UMAD_SA_CLASS_VERSION, 0, NULL);
 	if (uport->agentid < 0) {
 		path_err("umad_register failed: %s/%d, err %d\n",
-			 ibname, port, errno);
+			 uport->umad_port.ca_name, uport->umad_port.portnum, errno);
 		err = errno;
 		goto fail_register;
 	}
 
-	umad_port_num++;
+	path_dbg("%s/%d: umad init succeeded\n",
+		 uport->umad_port.ca_name, uport->umad_port.portnum);
 	return 0;
 
 fail_register:
 	umad_close_port(uport->portid);
-fail_open_port:
-	umad_release_port(&uport->umad_port);
-
 	return err;
 }
 
 int path_resolve_init(void)
 {
 	struct ibv_port_attr port_attr;
-	struct ibv_device **dev_list;
 	struct ibv_device_attr attr;
 	struct ibv_context *ibctx;
 	const char *devname;
-	int i, j, err, devnum;
+	int i, j, err;
 
 	err = umad_init();
 	if (err)
 		return err;
 
-	dev_list = ibv_get_device_list(&devnum);
-	if (!dev_list) {
+	ibdev_list = ibv_get_device_list(&ibdev_num);
+	if (!ibdev_list) {
 		path_err("Unable to get ib device list: %d\n", errno);
 		return errno;
 	}
 
-	for (i = 0; i < devnum; i++) {
-		devname = ibv_get_device_name(dev_list[i]);
+	arrdevs = calloc(ibdev_num, sizeof(*arrdevs));
+	if (!arrdevs) {
+		path_err("calloc ibdev_ibctx_list %d failed\n", ibdev_num);
+		ibv_free_device_list(ibdev_list);
+	}
+
+	for (i = 0; i < ibdev_num; i++) {
+		devname = ibv_get_device_name(ibdev_list[i]);
 		if (!devname) {
-			path_warn("Dev %d/%d: failed to get name: %d\n", i, devnum, errno);
+			path_warn("Dev %d/%d: failed to get name: %d\n",
+				  i, ibdev_num, errno);
 			continue;
 		}
-		ibctx = ibv_open_device(dev_list[i]);
+		ibctx = ibv_open_device(ibdev_list[i]);
 		if (!ibctx) {
 			path_warn("Dev %s: failed to open: %d\n", devname, errno);
 			continue;
@@ -199,6 +208,11 @@ int path_resolve_init(void)
 			continue;
 		}
 
+		if (attr.phys_port_cnt > MAX_PORTS_PER_DEVICE) {
+			path_err("Dev %s: unsupported phys_port_cnt %d\n",
+				 devname, attr.phys_port_cnt);
+			continue;
+		}
 		for (j = 0; j < attr.phys_port_cnt; j++) {
 			err = ibv_query_port(ibctx, j + 1, &port_attr);
 			if (err) {
@@ -206,21 +220,31 @@ int path_resolve_init(void)
 					  devname, j + 1, errno);
 				continue;
 			}
+
+			err = umad_get_port(devname, j + 1, &uports[umad_port_num].umad_port);
+			if (err) {
+				path_err("%s/%d: failed to get umad port: %d\n",
+					 devname, j + 1, errno);
+				continue;
+			}
+
+			arrdevs[i].ports[j].uport = &uports[umad_port_num];
+			arrdevs[i].ports[j].link_layer = port_attr.link_layer;
 			if (port_attr.link_layer == IBV_LINK_LAYER_INFINIBAND) {
 				path_info("Found an IB port(%d/%d): %s/%d...\n",
-					  i, devnum, devname, j + 1);
-				err = path_resolve_init_one(devname, j + 1);
+					  i, ibdev_num, devname, j + 1);
+				err = path_resolve_init_one(&arrdevs[i].ports[j]);
 				if (err)
 					continue;
-
-				path_info("Path resolve init succeeded: %s/%d\n", devname, j + 1);
 			}
+
+			umad_port_num++;
 		}
 
-		ibv_close_device(ibctx);
+		arrdevs[i].name = devname;
+		arrdevs[i].ibctx = ibctx;
+		arrdevs[i].port_cnt = attr.phys_port_cnt;
 	}
-
-	ibv_free_device_list(dev_list);
 
 	if (umad_port_num == 0) {
 		umad_done();
@@ -235,6 +259,15 @@ int path_resolve_init(void)
 void path_resolve_done(void)
 {
 	int i;
+
+	for (i = 0; i < ibdev_num; i++)
+		ibv_close_device(arrdevs[i].ibctx);
+
+	ibv_free_device_list(ibdev_list);
+	ibdev_list = NULL;
+	ibdev_num = 0;
+	free(arrdevs);
+	arrdevs = NULL;
 
 	for (i = 0; i < umad_port_num; i++) {
 		umad_unregister(uports[i].portid, uports[i].agentid);
