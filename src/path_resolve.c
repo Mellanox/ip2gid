@@ -26,6 +26,7 @@ struct pr_umad_port {
 	int agentid;
 };
 
+
 #define MAX_UMAD_PORTS 32
 static struct pr_umad_port uports[MAX_UMAD_PORTS];
 static unsigned int umad_port_num;
@@ -33,6 +34,8 @@ static unsigned int umad_port_num;
 struct arr_port {
 	struct pr_umad_port *uport;
 	uint8_t link_layer;
+
+	bool activated;
 };
 
 #define MAX_PORTS_PER_DEVICE 4
@@ -134,6 +137,18 @@ static int __req_slot_find(uint64_t tid)
 	return i;
 }
 
+static void path_resolve_clean_one(struct arr_port *arrport)
+{
+	struct pr_umad_port *uport = arrport->uport;
+
+	path_dbg("%s/%d: umad clean\n",
+		 uport->umad_port.ca_name, uport->umad_port.portnum);
+
+	umad_unregister(uport->portid, uport->agentid);
+	umad_close_port(uport->portid);
+	arrport->activated = false;
+}
+
 static int path_resolve_init_one(struct arr_port *arrport)
 {
 	struct pr_umad_port *uport = arrport->uport;
@@ -156,6 +171,7 @@ static int path_resolve_init_one(struct arr_port *arrport)
 		goto fail_register;
 	}
 
+	arrport->activated = true;
 	path_dbg("%s/%d: umad init succeeded\n",
 		 uport->umad_port.ca_name, uport->umad_port.portnum);
 	return 0;
@@ -216,7 +232,7 @@ int path_resolve_init(void)
 		for (j = 0; j < attr.phys_port_cnt; j++) {
 			err = ibv_query_port(ibctx, j + 1, &port_attr);
 			if (err) {
-				path_warn("%s/%d: failed to query port: %d\n",
+				path_warn("%s/%d: ibv_query_port failed: %d\n",
 					  devname, j + 1, errno);
 				continue;
 			}
@@ -697,47 +713,118 @@ static int set_fd_block(int fd)
 	return 0;
 }
 
+static void ibdev_event_handler(int devid)
+{
+	struct ibv_async_event event;
+	struct arr_port *aport;
+	int ret;
+
+	ret = ibv_get_async_event(arrdevs[devid].ibctx, &event);
+	if (ret) {
+		path_err("ibdev %d: Get async event failed: %d\n", devid, errno);
+		return;
+	}
+
+	path_info("%s/%d: Get event %d\n",
+		  arrdevs[devid].name, event.element.port_num, event.event_type);
+
+	if (event.element.port_num > arrdevs[devid].port_cnt) {
+		path_err("%s/%d: invalid port num, max %d\n",
+			 arrdevs[devid].name, event.element.port_num, arrdevs[devid].port_cnt);
+		goto out;
+	}
+
+	aport = &arrdevs[devid].ports[event.element.port_num - 1];
+	if (aport->link_layer != IBV_LINK_LAYER_INFINIBAND)
+		goto out;
+
+	switch (event.event_type) {
+	case IBV_EVENT_PORT_ACTIVE:
+	case IBV_EVENT_LID_CHANGE:
+	case IBV_EVENT_GID_CHANGE:
+	case IBV_EVENT_PKEY_CHANGE:
+		if (aport->activated)
+			path_resolve_clean_one(aport);
+		path_resolve_init_one(aport);
+		break;
+
+	case IBV_EVENT_PORT_ERR:
+		path_resolve_clean_one(aport);
+		break;
+
+	default:
+		break;
+	}
+
+out:
+	ibv_ack_async_event(&event);
+}
+
 void *run_path_resolve(void *arg)
 {
+	int i, j, fd_num, err;
 	struct pollfd *fds;
-	int i, err;
 
 	if (!umad_port_num) {
 		path_err("path resolve not initialized\n");
 		return NULL;
 	}
 
-	fds = calloc(umad_port_num, sizeof(*fds));
+	fd_num = umad_port_num + ibdev_num;
+	fds = calloc(fd_num, sizeof(*fds));
 	if (!fds) {
-		path_err("calloc %d/%ld failed: %d\n",
-			 umad_port_num, sizeof(*fds), errno);
+		path_err("calloc %d+%d failed: %d\n",
+			 umad_port_num, ibdev_num, errno);
 		return NULL;
 	}
 
-	for (i = 0; i < umad_port_num; i ++) {
-		fds[i].fd = umad_get_fd(uports[i].portid);
-		fds[i].events = POLLIN;
-		err = set_fd_block(fds[i].fd);
+	/**
+	 * [0, umad_port_num): umad events;
+	 * [umad_port_num, fd_num): ibdev async events
+	 */
+	for (i = 0, j = 0; i < umad_port_num; i++, j++) {
+		fds[j].fd = umad_get_fd(uports[i].portid);
+		fds[j].events = POLLIN;
+		err = set_fd_block(fds[j].fd);
 		if (err)
 			path_warn("%s/%d: umad fd %d is blocking\n",
-				  uports[i].umad_port.ca_name,
-				  uports[i].umad_port.portnum,
-				  fds[i].fd);
+				  uports[j].umad_port.ca_name,
+				  uports[j].umad_port.portnum,
+				  fds[j].fd);
+
+		path_dbg("fds %d: umad_port %d\n", j, i);
+	}
+
+	for (i = 0; i < ibdev_num; i++, j++) {
+		fds[j].fd = arrdevs[i].ibctx->async_fd;
+		fds[j].events = POLLIN;
+		err = set_fd_block(fds[j].fd);
+		if (err)
+			path_warn("ibdev %d async_fd is blocking\n", i);
+
+		path_dbg("fds %d: ibdev %d\n", j, i);
 	}
 
 	do {
-		err = poll(fds, umad_port_num, -1);
+		err = poll(fds, fd_num, -1);
 		if (err < 0) {
 			path_err("poll error %d\n", errno);
 			continue;
 		}
 
-		for (i = 0; i < umad_port_num; i++) {
+		for (i = 0; i < fd_num; i++) {
 			if (!fds[i].revents)
 				continue;
 
-			if (fds[i].revents & POLLIN)
+			if (!(fds[i].revents & POLLIN)) {
+				fds[i].revents = 0;
+				continue;
+			}
+
+			if (i < umad_port_num)
 				recv_one_mad(i);
+			else
+				ibdev_event_handler(i - umad_port_num);
 
 			fds[i].revents = 0;
 		}
