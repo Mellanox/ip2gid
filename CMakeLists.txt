@@ -15,20 +15,20 @@ set(LIB_PATCH_VERSION "1")
 set(LIB_VERSION_STRING "${LIB_MAJOR_VERSION}.${LIB_MINOR_VERSION}.${LIB_PATCH_VERSION}")
 
 if (CMAKE_VERSION VERSION_LESS 3.0)
-	PROJECT(ip2gid C)
+	PROJECT(ibarr C)
 	set(PROJECT_VERSION ${LIB_VERSION_STRING})
 else()
 	cmake_policy(SET CMP0048 NEW)
-	project(ip2gid
+	project(ibarr
 		VERSION "${LIB_VERSION_STRING}"
 		DESCRIPTION "IP 2 GID resolution over UDP"
 		LANGUAGES C)
 endif()
 set(CMAKE_C_COMPILER_NAMES gcc clang)
 include_directories("include")
-add_executable(ip2gid
+add_executable(ibarr
 	src/main.c src/log.c src/msg_check.c src/ipr_client.c src/ipr_server.c src/nl_rdma.c src/path_resolve.c)
-target_compile_options(ip2gid PRIVATE -Wall -O0 -g)
+target_compile_options(ibarr PRIVATE -Wall -O0 -g)
 
 set(SEARCHPATHS
 	/opt/local
@@ -84,7 +84,7 @@ else()
 	message(FATAL_ERROR "Could not find libibumad")
 endif()
 
-target_link_libraries(ip2gid ${CMAKE_THREAD_LIBS_INIT} ${LibNL3_LIBRARY} ${LibNL3_ROUTE_LIBRARY} ${LibIBVERBS_LIBRARY} ${LibIBUMAD_LIBRARY})
+target_link_libraries(ibarr ${CMAKE_THREAD_LIBS_INIT} ${LibNL3_LIBRARY} ${LibNL3_ROUTE_LIBRARY} ${LibIBVERBS_LIBRARY} ${LibIBUMAD_LIBRARY})
 include_directories(${NL_INCLUDE_DIRS})
 set(CMAKE_REQUIRED_INCLUDES "${NL_INCLUDE_DIRS}")
 set(CMAKE_REQUIRED_INCLUDES "${NL_INCLUDE_DIRS}")
