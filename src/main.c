@@ -21,95 +21,141 @@
 #include <getopt.h>
 #include <msg_spec.h>
 
-#include "ip2gid.h"
+#include "ib_resolve.h"
 #include "log.h"
-#include "client.h"
-#include "server.h"
+#include "ipr_client.h"
+#include "ipr_server.h"
+#include "nl_rdma.h"
+#include "path_resolve.h"
 
 #include "config.h"
 
-struct nl_ip2gid priv = {-1, -1, -1, 0, NULL};
+struct ib_resolve priv;
 
 static int server_port = IP2GID_SERVER_PORT;
-static int log_level = IP2GID_LOG_ALL;
+static unsigned int log_level = RESOLV_LOG_INFO;
 
 static void show_usage(char *program)
 {
 	printf("usage: %s [OPTION]\n", program);
 	printf("   [-l, --log=level]  - 0 = All\n");
-	printf("                      - 1 = Warn\n");
-	printf("                      - 2 = Error\n");
+	printf("                      - 1 = Info\n");
+	printf("                      - 2 = Warn\n");
+	printf("                      - 3 = Error\n");
 	printf("   [-v, --version]    - show version\n");
 	printf("   [-h, --help]       - Show help\n");
 }
 
-int main(int argc, char **argv)
+static int parse_opt(int argc, char **argv)
 {
 	static const struct option long_opts[] = {
                 {"log", 1, NULL, 'l'},
 		{"version", 0, NULL, 'v'},
                 {},
         };
-	pthread_t tid[3];
-	int level;
-	int err;
 	int op;
 
 	while ((op = getopt_long(argc, argv, "hvl:",
 				 long_opts, NULL)) != -1) {
 		switch (op) {
 		case 'l':
-			level = atoi(optarg);
-			if (level == 0)
-				log_level = IP2GID_LOG_ALL;
-			else if (level == 1)
-				log_level = IP2GID_LOG_WARN;
-			else if (level == 2)
-				log_level = IP2GID_LOG_ERR;
-			else {
-				printf("Not valid log level\n");
-				exit(1);
+			log_level = atoi(optarg);
+			if (log_level >= RESOLV_LOG_MAX) {
+				printf("Not valid log level %d\n", log_level);
+				return -EINVAL;
 			}
 
 			break;
 		case 'v':
 			printf("%s %s\n", PROJECT_NAME, PROJECT_VERSION);
-			exit(0);
+			return -1;
 		case 'h':
 		default:
 			show_usage(argv[0]);
-			exit(0);
+			return -1;
 		}
 	}
 
-	err = ip2gid_open_log(log_level);
+	return 0;
+}
+
+static int start_ip2gid_resolve(struct ib_resolve *ibr)
+{
+	int err;
+
+	ibr->ipr.server_port = server_port;
+
+	err = ipr_server_create(&ibr->ipr);
 	if (err)
 		return err;
 
-	priv.server_port = server_port;
-	err = create_server(&priv);
+	err = ipr_client_create(&ibr->ipr);
 	if (err)
 		return err;
 
-	err = create_client(&priv);
+	err = pthread_create(&ibr->tid_ipr_server, NULL,
+			     &run_ipr_server, &ibr->ipr);
 	if (err)
 		return err;
 
-	err = pthread_create(&tid[0], NULL, &run_server, &priv);
+	err = pthread_create(&ibr->tid_ipr_client, NULL,
+			     &run_ipr_client, &ibr->ipr);
 	if (err)
 		return err;
 
-	err = pthread_create(&tid[1], NULL, &run_client_send, &priv);
+	return 0;
+}
+
+static int start_path_resolve(struct ib_resolve *ibr)
+{
+	int err;
+
+	err = path_resolve_init();
 	if (err)
 		return err;
 
-	err = pthread_create(&tid[1], NULL, &run_client_recv, &priv);
+	err = pthread_create(&ibr->tid_path_resolve, NULL,
+			     &run_path_resolve, NULL);
+	if (err)
+		goto fail;
+
+	return 0;
+
+fail:
+	path_resolve_done();
+	return err;
+}
+
+int main(int argc, char **argv)
+{
+	int err;
+
+	err = parse_opt(argc, argv);
 	if (err)
 		return err;
 
-	pthread_join(tid[0], NULL);
-	pthread_join(tid[1], NULL);
-	pthread_join(tid[2], NULL);
+	priv.ipr.server_port = server_port;
+
+	err = resolv_open_log(log_level);
+	if (err)
+		return err;
+
+	err = start_ip2gid_resolve(&priv);
+	if (err)
+		return err;
+
+	err = start_path_resolve(&priv);
+	if (err)
+		return err;
+
+	err = start_nl_rdma(&priv);
+	if (err)
+		return err;
+
+	pthread_join(priv.tid_ipr_client, NULL);
+	pthread_join(priv.tid_ipr_server, NULL);
+	pthread_join(priv.tid_path_resolve, NULL);
+	pthread_join(priv.tid_nl_rdma, NULL);
 
 	return 0;
 }
