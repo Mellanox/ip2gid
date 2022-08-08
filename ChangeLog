@@ -1,0 +1,9 @@
+* 0.1.0
+- Rename application name from "ip2gid" to "ibarr";
+- First version that supports gid2lid/gid2flid resolution.
+
+* 0.0.1
+- Initial version which supports ip2gid resolution.
+
+--
+Mark Zhang <markzhang@nvidia.com>
