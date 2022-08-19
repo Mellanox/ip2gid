@@ -30,20 +30,9 @@ add_executable(ibarr
 	src/main.c src/log.c src/msg_check.c src/ipr_client.c src/ipr_server.c src/nl_rdma.c src/path_resolve.c)
 target_compile_options(ibarr PRIVATE -Wall -O0 -g)
 
-set(SEARCHPATHS
-	/opt/local
-	/sw
-	/usr
-	/usr/local)
-
-find_path(NL_INCLUDE_DIRS
-	PATH_SUFFIXES
-		include/libnl3
-		include
-	NAMES
-		netlink/netlink.h
-	PATHS
-		$(SEARCHPATHS))
+FIND_PACKAGE(PkgConfig REQUIRED)
+pkg_check_modules(NL libnl-3.0 libnl-route-3.0 REQUIRED)
+include_directories(${NL_INCLUDE_DIRS})
 
 #-------------------------
 # Find libraries
@@ -85,7 +74,6 @@ else()
 endif()
 
 target_link_libraries(ibarr ${CMAKE_THREAD_LIBS_INIT} ${LibNL3_LIBRARY} ${LibNL3_ROUTE_LIBRARY} ${LibIBVERBS_LIBRARY} ${LibIBUMAD_LIBRARY})
-include_directories(${NL_INCLUDE_DIRS})
 set(CMAKE_REQUIRED_INCLUDES "${NL_INCLUDE_DIRS}")
 set(CMAKE_REQUIRED_INCLUDES "${NL_INCLUDE_DIRS}")
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/buildlib/config.h.in" "${CMAKE_BINARY_DIR}/config.h")

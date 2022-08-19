@@ -21,11 +21,6 @@
 
 #define IBR_NL_MAX_PAYLOAD 512
 
-union addr_sa {
-	struct sockaddr sa;
-	struct sockaddr_in s4;
-};
-
 struct ip2gid_obj {
 	uint32_t data_len;
 	char *data[sizeof(struct ip2gid_hdr) +

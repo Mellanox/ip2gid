@@ -16,6 +16,11 @@
 #include "log.h"
 #include "nl_rdma.h"
 
+union addr_sa {
+	struct sockaddr sa;
+	struct sockaddr_in s4;
+};
+
 static int cells_used = 0;
 struct cell_req pending[DEFAULT_PENDING_REQUESTS] = {};
 pthread_mutex_t lock_pending = PTHREAD_MUTEX_INITIALIZER;
