@@ -78,3 +78,5 @@ set(CMAKE_REQUIRED_INCLUDES "${NL_INCLUDE_DIRS}")
 set(CMAKE_REQUIRED_INCLUDES "${NL_INCLUDE_DIRS}")
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/buildlib/config.h.in" "${CMAKE_BINARY_DIR}/config.h")
 include_directories(${PROJECT_BINARY_DIR})
+
+install(TARGETS ibarr DESTINATION bin)
