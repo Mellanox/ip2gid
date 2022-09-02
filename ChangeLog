@@ -1,3 +1,6 @@
+* 0.1.2
+- Fix a bug that ibarr doesn't get correct sm_lid if it is started before opensm.
+
 * 0.1.1
 - Fix build errors on RHEL7.6 platform;
 - Support "make install".
