@@ -21,8 +21,13 @@
 #include "path_resolve.h"
 
 struct pr_umad_port {
-	umad_port_t umad_port;
-	int portid;
+	char ca_name[UMAD_CA_NAME_LEN];
+	int portnum;
+
+	unsigned int sm_lid;
+	unsigned int sm_sl;
+
+	int portid;		/* umad port id */
 	int agentid;
 };
 
@@ -142,7 +147,7 @@ static void path_resolve_clean_one(struct arr_port *arrport)
 	struct pr_umad_port *uport = arrport->uport;
 
 	path_dbg("%s/%d: umad clean\n",
-		 uport->umad_port.ca_name, uport->umad_port.portnum);
+		 uport->ca_name, uport->portnum);
 
 	umad_unregister(uport->portid, uport->agentid);
 	umad_close_port(uport->portid);
@@ -154,11 +159,10 @@ static int path_resolve_init_one(struct arr_port *arrport)
 	struct pr_umad_port *uport = arrport->uport;
 	int err;
 
-	uport->portid = umad_open_port(uport->umad_port.ca_name,
-				       uport->umad_port.portnum);
+	uport->portid = umad_open_port(uport->ca_name, uport->portnum);
 	if (uport->portid < 0) {
 		path_err("umad_open_port failed: %s/%d, err %d\n",
-			 uport->umad_port.ca_name, uport->umad_port.portnum, errno);
+			 uport->ca_name, uport->portnum, errno);
 		return errno;
 	}
 
@@ -166,14 +170,14 @@ static int path_resolve_init_one(struct arr_port *arrport)
 				       UMAD_SA_CLASS_VERSION, 0, NULL);
 	if (uport->agentid < 0) {
 		path_err("umad_register failed: %s/%d, err %d\n",
-			 uport->umad_port.ca_name, uport->umad_port.portnum, errno);
+			 uport->ca_name, uport->portnum, errno);
 		err = errno;
 		goto fail_register;
 	}
 
 	arrport->activated = true;
-	path_dbg("%s/%d: umad init succeeded\n",
-		 uport->umad_port.ca_name, uport->umad_port.portnum);
+	path_dbg("%s/%d: umad init succeeded\n", uport->ca_name, uport->portnum);
+
 	return 0;
 
 fail_register:
@@ -237,18 +241,19 @@ int path_resolve_init(void)
 				continue;
 			}
 
-			err = umad_get_port(devname, j + 1, &uports[umad_port_num].umad_port);
-			if (err) {
-				path_err("%s/%d: failed to get umad port: %d\n",
-					 devname, j + 1, errno);
-				continue;
-			}
+			strncpy(uports[umad_port_num].ca_name, devname,
+				strlen(devname));
+			uports[umad_port_num].portnum = j + 1;
 
 			arrdevs[i].ports[j].uport = &uports[umad_port_num];
 			arrdevs[i].ports[j].link_layer = port_attr.link_layer;
 			if (port_attr.link_layer == IBV_LINK_LAYER_INFINIBAND) {
-				path_info("Found an IB port(%d/%d): %s/%d...\n",
-					  i, ibdev_num, devname, j + 1);
+				path_info("Found an IB port(%d/%d): %s/%d, sm_lid %d, sm_sl %d\n",
+					  i, ibdev_num, devname, j + 1,
+					  port_attr.sm_lid, port_attr.sm_sl);
+
+				uports[umad_port_num].sm_lid = port_attr.sm_lid;
+				uports[umad_port_num].sm_sl = port_attr.sm_sl;
 				err = path_resolve_init_one(&arrdevs[i].ports[j]);
 				if (err)
 					continue;
@@ -288,7 +293,6 @@ void path_resolve_done(void)
 	for (i = 0; i < umad_port_num; i++) {
 		umad_unregister(uports[i].portid, uports[i].agentid);
 		umad_close_port(uports[i].portid);
-		umad_release_port(&uports[i].umad_port);
 	}
 
 	umad_port_num = 0;
@@ -443,9 +447,9 @@ struct pr_umad_port *find_uport(const char *devname, int port_num)
 	int i;
 
 	for (i = 0; i < umad_port_num; i++) {
-		if (strncmp(uports[i].umad_port.ca_name,
+		if (strncmp(uports[i].ca_name,
 			   devname, strlen(devname)) == 0 &&
-			uports[i].umad_port.portnum == port_num)
+			uports[i].portnum == port_num)
 			return uports + i;
 	}
 	return NULL;
@@ -495,6 +499,13 @@ int path_resolve_req(const struct nl_msg *msg)
 		return -ENOENT;
 	}
 
+	if (!uport->sm_lid || (uport->sm_lid == 0xffff)) {
+		path_err("%s/%d: Not able to resolve as sm_lid is not set: %u\n",
+		msg->rheader.device_name, msg->rheader.port_num,
+		uport->sm_lid);
+		return EINVAL;
+	}
+
 	umad = calloc(1, len + umad_size());
 	if (!umad) {
 		path_err("calloc %d failed %d\n", len + umad_size(), errno);
@@ -515,8 +526,7 @@ int path_resolve_req(const struct nl_msg *msg)
 		 msg->rheader.device_name, msg->rheader.port_num, reqid, req->tid,
 		 req->nlseq, req->nltype, msg->rheader.path_use);
 
-	umad_set_addr(umad, uport->umad_port.sm_lid, 1,
-		      uport->umad_port.sm_sl, UMAD_QKEY);
+	umad_set_addr(umad, uport->sm_lid, 1, uport->sm_sl, UMAD_QKEY);
 
 	err = req_nlmsg_resolve_path(msg, &pr, &req->comp_mask);
 	if (err)
@@ -713,6 +723,35 @@ static int set_fd_block(int fd)
 	return 0;
 }
 
+static void port_up(struct arr_port *aport)
+{
+	if (aport->activated)
+		path_resolve_clean_one(aport);
+	path_resolve_init_one(aport);
+}
+
+static void port_change(struct ibv_context *ibctx,
+			struct arr_port *aport)
+{
+	struct ibv_port_attr port_attr = {};
+	int err;
+
+	err = ibv_query_port(ibctx, aport->uport->portnum, &port_attr);
+	if (err) {
+		path_err("ibv_query_port failed %s/%d: %d\n",
+			 aport->uport->ca_name, aport->uport->portnum);
+		return;
+	}
+
+	aport->uport->sm_lid = port_attr.sm_lid;
+	aport->uport->sm_sl = port_attr.sm_sl;
+	path_info("%s/%d: Update sm_lid %u, sm_sl %u\n",
+		  aport->uport->ca_name, aport->uport->portnum,
+		  aport->uport->sm_lid, aport->uport->sm_sl);
+
+	port_up(aport);
+}
+
 static void ibdev_event_handler(int devid)
 {
 	struct ibv_async_event event;
@@ -740,12 +779,14 @@ static void ibdev_event_handler(int devid)
 
 	switch (event.event_type) {
 	case IBV_EVENT_PORT_ACTIVE:
+		port_up(aport);
+		break;
+
 	case IBV_EVENT_LID_CHANGE:
 	case IBV_EVENT_GID_CHANGE:
 	case IBV_EVENT_PKEY_CHANGE:
-		if (aport->activated)
-			path_resolve_clean_one(aport);
-		path_resolve_init_one(aport);
+	case IBV_EVENT_CLIENT_REREGISTER:
+		port_change(arrdevs[devid].ibctx, aport);
 		break;
 
 	case IBV_EVENT_PORT_ERR:
@@ -788,9 +829,7 @@ void *run_path_resolve(void *arg)
 		err = set_fd_block(fds[j].fd);
 		if (err)
 			path_warn("%s/%d: umad fd %d is blocking\n",
-				  uports[j].umad_port.ca_name,
-				  uports[j].umad_port.portnum,
-				  fds[j].fd);
+				  uports[j].ca_name, uports[j].portnum, fds[j].fd);
 
 		path_dbg("fds %d: umad_port %d\n", j, i);
 	}
