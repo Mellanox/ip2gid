@@ -618,7 +618,7 @@ static int send_resp(struct ib_user_mad *umad,
 		 be32toh(path->flowlabel_hoplimit) & 0xff);
 
 	if ((path_use == LS_RESOLVE_PATH_USE_ALL) &&
-	    (be32toh(path->flowlabel_hoplimit) & 0xff)) {
+	    ((be32toh(path->flowlabel_hoplimit) & 0xff) > 1)) {
 		sflid = get_flid_from_gid(&path->sgid);
 		dflid = get_flid_from_gid(&path->dgid);
 		if (sflid && dflid) {
