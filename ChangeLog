@@ -1,3 +1,6 @@
+* 0.1.3
+- Enable FLID only when "hot_limit > 1", instead of non-0.
+
 * 0.1.2
 - Fix a bug that ibarr doesn't get correct sm_lid if it is started before opensm.
 
