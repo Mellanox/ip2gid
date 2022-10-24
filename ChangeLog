@@ -1,0 +1,19 @@
+* 0.1.3
+- Enable FLID only when "hot_limit > 1", instead of non-0.
+
+* 0.1.2
+- Fix a bug that ibarr doesn't get correct sm_lid if it is started before opensm.
+
+* 0.1.1
+- Fix build errors on RHEL7.6 platform;
+- Support "make install".
+
+* 0.1.0
+- Rename application name from "ip2gid" to "ibarr";
+- First version that supports gid2lid/gid2flid resolution.
+
+* 0.0.1
+- Initial version which supports ip2gid resolution.
+
+--
+Mark Zhang <markzhang@nvidia.com>

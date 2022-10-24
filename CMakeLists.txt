@@ -10,40 +10,29 @@
 
 cmake_minimum_required(VERSION 2.8.11)
 set(LIB_MAJOR_VERSION "0")
-set(LIB_MINOR_VERSION "0")
-set(LIB_PATCH_VERSION "1")
+set(LIB_MINOR_VERSION "1")
+set(LIB_PATCH_VERSION "3")
 set(LIB_VERSION_STRING "${LIB_MAJOR_VERSION}.${LIB_MINOR_VERSION}.${LIB_PATCH_VERSION}")
 
 if (CMAKE_VERSION VERSION_LESS 3.0)
-	PROJECT(ip2gid C)
+	PROJECT(ibarr C)
 	set(PROJECT_VERSION ${LIB_VERSION_STRING})
 else()
 	cmake_policy(SET CMP0048 NEW)
-	project(ip2gid
+	project(ibarr
 		VERSION "${LIB_VERSION_STRING}"
 		DESCRIPTION "IP 2 GID resolution over UDP"
 		LANGUAGES C)
 endif()
 set(CMAKE_C_COMPILER_NAMES gcc clang)
 include_directories("include")
-add_executable(ip2gid
-	src/main.c src/log.c src/msg_check.c src/client.c src/server.c)
-target_compile_options(ip2gid PRIVATE -Wall)
+add_executable(ibarr
+	src/main.c src/log.c src/msg_check.c src/ipr_client.c src/ipr_server.c src/nl_rdma.c src/path_resolve.c)
+target_compile_options(ibarr PRIVATE -Wall -O0 -g)
 
-set(SEARCHPATHS
-	/opt/local
-	/sw
-	/usr
-	/usr/local)
-
-find_path(NL_INCLUDE_DIRS
-	PATH_SUFFIXES
-		include/libnl3
-		include
-	NAMES
-		netlink/netlink.h
-	PATHS
-		$(SEARCHPATHS))
+FIND_PACKAGE(PkgConfig REQUIRED)
+pkg_check_modules(NL libnl-3.0 libnl-route-3.0 REQUIRED)
+include_directories(${NL_INCLUDE_DIRS})
 
 #-------------------------
 # Find libraries
@@ -67,9 +56,27 @@ if (LibNL3_ROUTE_LIBRARY)
 else()
 	message(FATAL_ERROR "Could not find libnl-route-3-dev")
 endif()
-target_link_libraries(ip2gid ${CMAKE_THREAD_LIBS_INIT} ${LibNL3_LIBRARY} ${LibNL3_ROUTE_LIBRARY})
-include_directories(${NL_INCLUDE_DIRS})
+
+#libibverbs
+find_library(LibIBVERBS_LIBRARY NAMES ibverbs)
+if (LibIBVERBS_LIBRARY)
+	message(STATUS "Found libibverbs")
+else()
+	message(FATAL_ERROR "Could not find libibverbs")
+endif()
+
+#libibumad
+find_library(LibIBUMAD_LIBRARY NAMES ibumad)
+if (LibIBUMAD_LIBRARY)
+	message(STATUS "Found libibumad")
+else()
+	message(FATAL_ERROR "Could not find libibumad")
+endif()
+
+target_link_libraries(ibarr ${CMAKE_THREAD_LIBS_INIT} ${LibNL3_LIBRARY} ${LibNL3_ROUTE_LIBRARY} ${LibIBVERBS_LIBRARY} ${LibIBUMAD_LIBRARY})
 set(CMAKE_REQUIRED_INCLUDES "${NL_INCLUDE_DIRS}")
 set(CMAKE_REQUIRED_INCLUDES "${NL_INCLUDE_DIRS}")
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/buildlib/config.h.in" "${CMAKE_BINARY_DIR}/config.h")
 include_directories(${PROJECT_BINARY_DIR})
+
+install(TARGETS ibarr DESTINATION bin)

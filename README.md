@@ -1,8 +1,10 @@
-# IP2GID Userspace resolution over UDP
+# Nvidia address and route userspace resolution services for Infiniband
 
 This is a userspace application that interacts over NetLink with the Linux
-RDMA subsystem and helps with the task of resolving a destination IP into
-a destination GID needed when running a rdmacm applications.
+RDMA subsystem and provides 2 services: ip2gid (address resolution) and gid2lid (PathRecord resolution).
+
+## ip2gid
+It resolves a destination IP into a destination GID needed when running a rdmacm applications.
 
 The application is both a client and a server and should be run on every
 node in the fabric.
@@ -20,6 +22,13 @@ the end node's, a different solution is needed in such cases.
 
 Ip2gid address this limitation by using a dedicated protocol on top of UDP
 to send and answer for IP 2 GID resolution requests.
+
+## gid2lid
+It resolves a GID into one PathRecord(PR) or multiple PRs if needed. It works like this:
+- Get a request from kernel;
+- Forward this request to SM, and get response;
+- Check if multiple PRs are needed; If yes then it creates another 2 PRs, and send them to kernel along with the default (GMP) one.
+This service is useful for Floating LID (FLID) support, where multiple PRs are needed.
 
 # Building
 ```sh
