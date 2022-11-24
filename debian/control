@@ -1,0 +1,25 @@
+Source: ip2gid
+Section: net
+Priority: optional
+Maintainer: Tzafrir Cohen <nvidia@cohens.org.il>
+Build-Depends: debhelper (>= 9),
+ cmake,
+ libnl-3-dev,
+ libnl-route-3-dev,
+ libibverbs-dev,
+ libibumad-dev,
+ pkgconf,
+Standards-Version: 4.5.0
+Rules-Requires-Root: no
+Homepage: https://github.com/Mellanox/ip2gid/
+Vcs-Browser: https://github.com/Mellanox/ip2gid/
+Vcs-Git: https://github.com/Mellanox/ip2gid/
+
+Package: ip2gid
+Architecture: any
+Multi-Arch: same
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Nvidia address and route userspace resolution services for Infiniband
+ a userspace application that interacts over NetLink with the Linux RDMA
+ subsystem and provides 2 services: ip2gid (address resolution) and gid2lid
+ (PathRecord resolution).
