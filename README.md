@@ -42,10 +42,10 @@ $ make
 
 ### Debian Derived
 ```sh
-$ apt-get install build-essential cmake gcc libnl-3-dev libnl-route-3-dev
+$ apt-get install build-essential cmake libnl-3-dev libnl-route-3-dev libibverbs-dev libibumad-dev pkgconf
 ```
 
 ### Fedora
 ```sh
-$ dnf install cmake gcc libnl3-devel
+$ dnf install cmake gcc libnl3-devel rdma-core-devel
 ```
