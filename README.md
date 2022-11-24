@@ -38,7 +38,7 @@ $ cmake ..
 $ make
 ```
 
-*build* will contain the executable *ip2gid*.
+*build* will contain the executable *ibaddr*.
 
 ### Debian Derived
 ```sh
