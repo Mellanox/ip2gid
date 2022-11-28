@@ -38,7 +38,7 @@ $ cmake ..
 $ make
 ```
 
-*build* will contain the executable *ibaddr*.
+*build* will contain the executable *ibarr*.
 
 ### Debian Derived
 ```sh
