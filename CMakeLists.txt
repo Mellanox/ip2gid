@@ -28,7 +28,7 @@ set(CMAKE_C_COMPILER_NAMES gcc clang)
 include_directories("include")
 add_executable(ibarr
 	src/main.c src/log.c src/msg_check.c src/ipr_client.c src/ipr_server.c src/nl_rdma.c src/path_resolve.c)
-target_compile_options(ibarr PRIVATE -Wall -O0 -g)
+target_compile_options(ibarr PRIVATE -Wall -g)
 
 FIND_PACKAGE(PkgConfig REQUIRED)
 pkg_check_modules(NL libnl-3.0 libnl-route-3.0 REQUIRED)
