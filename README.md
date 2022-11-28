@@ -40,6 +40,28 @@ $ make
 
 *build* will contain the executable *ibarr*.
 
+# Running
+Just run, as root:
+
+`ibarr`
+
+Output is logged to the standard output by default.
+
+If you want to enable logging, use the option *-l* . Note that log level 0
+logs everything and higher levels log just some of the messages:
+
+`ibarr -l 0`
+
+Alternatively, you can start the systemd unit. It will not be started
+automatically:
+
+`systemctl start ip2gid`
+
+Output will be logged to the journal:
+
+`journalctl -u ip2gid`
+
+
 ### Debian Derived
 ```sh
 $ apt-get install build-essential cmake libnl-3-dev libnl-route-3-dev libibverbs-dev libibumad-dev pkgconf
