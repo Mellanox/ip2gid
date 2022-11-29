@@ -1,0 +1,16 @@
+#!/bin/sh
+
+# Set packaging verisions according to CMake package version
+
+set -e
+
+# set(LIB_MAJOR_VERSION "0")
+# set(LIB_MINOR_VERSION "1")
+# set(LIB_PATCH_VERSION "3")
+ver_maj=`awk -F'"' '/set\(LIB_MAJOR_VERSION/ {print $2}' CMakeLists.txt`
+ver_min=`awk -F'"' '/set\(LIB_MINOR_VERSION/ {print $2}' CMakeLists.txt`
+ver_pat=`awk -F'"' '/set\(LIB_PATCH_VERSION/ {print $2}' CMakeLists.txt`
+version="${ver_maj}.${ver_min}.${ver_pat}"
+
+sed -i -e "/^Version:/s/:.*/:\t$version/" ip2gid.spec
+sed -i -e "1s/([^)]*)/(${version}-1)/" debian/changelog

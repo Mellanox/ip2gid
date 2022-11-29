@@ -1,0 +1,12 @@
+[Unit]
+Description=Nvidia address and route userspace resolution services for Infiniband
+Documentation=https://github.com/Melanox/ip2gid/
+
+[Service]
+ExecStart=/usr/bin/ibarr
+# Try to restrict it, because it hardly reads and writes files:
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=full
+
+# No [Install] section. This unit is only started manually

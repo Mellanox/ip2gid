@@ -80,3 +80,5 @@ configure_file("${CMAKE_CURRENT_SOURCE_DIR}/buildlib/config.h.in" "${CMAKE_BINAR
 include_directories(${PROJECT_BINARY_DIR})
 
 install(TARGETS ibarr DESTINATION bin)
+
+install(FILES ip2gid.service DESTINATION /lib/systemd/system)

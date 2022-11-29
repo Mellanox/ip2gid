@@ -45,10 +45,11 @@ missing
 tags
 
 #Programs
-ip2gid
+ibarr
 
 #Debian Stuff
-debian/compat
 debian/*.log
 debian/files
-debian/perftest
+debian/*.substvars
+debian/.debhelper/
+debian/ip2gid/
