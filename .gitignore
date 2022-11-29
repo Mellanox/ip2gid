@@ -52,4 +52,4 @@ debian/*.log
 debian/files
 debian/*.substvars
 debian/.debhelper/
-debian/ip2gid/
+debian/ibarr/

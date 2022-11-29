@@ -1,4 +1,4 @@
-Name:		ip2gid
+Name:		ibarr
 Version:	0.1.3
 Release:	1%{?dist}
 Summary:	Nvidia address and route userspace resolution services for Infiniband

@@ -1,4 +1,4 @@
-Source: ip2gid
+Source: ibarr
 Section: net
 Priority: optional
 Maintainer: Tzafrir Cohen <nvidia@cohens.org.il>
@@ -15,7 +15,7 @@ Homepage: https://github.com/Mellanox/ip2gid/
 Vcs-Browser: https://github.com/Mellanox/ip2gid/
 Vcs-Git: https://github.com/Mellanox/ip2gid/
 
-Package: ip2gid
+Package: ibarr
 Architecture: any
 Multi-Arch: same
 Depends: ${shlibs:Depends}, ${misc:Depends}
