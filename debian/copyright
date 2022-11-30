@@ -1,5 +1,5 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Upstream-Name: ip2gid
+Upstream-Name: ibarr
 Source: https://github.com/Mellanox/ip2gid/
 
 Files: *

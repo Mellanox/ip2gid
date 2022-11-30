@@ -81,4 +81,4 @@ include_directories(${PROJECT_BINARY_DIR})
 
 install(TARGETS ibarr DESTINATION bin)
 
-install(FILES ip2gid.service DESTINATION /lib/systemd/system)
+install(FILES ibarr.service DESTINATION /lib/systemd/system)

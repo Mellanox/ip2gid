@@ -12,5 +12,5 @@ ver_min=`awk -F'"' '/set\(LIB_MINOR_VERSION/ {print $2}' CMakeLists.txt`
 ver_pat=`awk -F'"' '/set\(LIB_PATCH_VERSION/ {print $2}' CMakeLists.txt`
 version="${ver_maj}.${ver_min}.${ver_pat}"
 
-sed -i -e "/^Version:/s/:.*/:\t$version/" ip2gid.spec
+sed -i -e "/^Version:/s/:.*/:\t$version/" ibarr.spec
 sed -i -e "1s/([^)]*)/(${version}-1)/" debian/changelog
