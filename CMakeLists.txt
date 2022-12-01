@@ -21,7 +21,6 @@ else()
 	cmake_policy(SET CMP0048 NEW)
 	project(ibarr
 		VERSION "${LIB_VERSION_STRING}"
-		DESCRIPTION "IP 2 GID resolution over UDP"
 		LANGUAGES C)
 endif()
 set(CMAKE_C_COMPILER_NAMES gcc clang)

@@ -10,7 +10,6 @@ Build-Depends: debhelper (>= 9),
  libibumad-dev,
  pkgconf | pkg-config,
 Standards-Version: 4.5.0
-Rules-Requires-Root: no
 Homepage: https://github.com/Mellanox/ip2gid/
 Vcs-Browser: https://github.com/Mellanox/ip2gid/
 Vcs-Git: https://github.com/Mellanox/ip2gid/
