@@ -13,6 +13,15 @@ License:	(GPL-2.0 WITH Linux-syscall-note) OR BSD-2-Clause
 %if %{undefined cmake_install}
 %global cmake_install %make_install
 %endif
+%if %{undefined cmake_build}
+  %if %{defined make_jobs}
+    # SLES12
+    %global cmake_build %make_jobs
+  %else
+    # RHEL < 9, Fedora < ??
+    %global cmake_build %make_build
+  %endif
+%endif
 
 %description
 a userspace application that interacts over NetLink with the Linux RDMA
@@ -24,7 +33,7 @@ subsystem and provides 2 services: ip2gid (address resolution) and gid2lid
 
 %build
 %cmake
-%make_build
+%cmake_build
 
 %install
 %cmake_install
