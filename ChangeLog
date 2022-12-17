@@ -1,6 +1,3 @@
-* 0.1.4
-- ipr/client: Handle duplicate request properly, and improve clear_timeout request cells.
-
 * 0.1.3
 - Enable FLID only when "hot_limit > 1", instead of non-0.
 
