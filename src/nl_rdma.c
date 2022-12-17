@@ -129,7 +129,8 @@ loop:
 	}
 
 	op = RDMA_NL_GET_OP(req.nlmsg_hdr.nlmsg_type);
-	nl_log_info("Got a new kernel request type %d op %d\n", type, op);
+	nl_log_dbg("Got a new kernel request seq %u type %d op %d\n",
+		   req.nlmsg_hdr.nlmsg_seq, type, op);
 	switch (op) {
 	case RDMA_NL_LS_OP_RESOLVE:
 		err = path_resolve_req(&req);

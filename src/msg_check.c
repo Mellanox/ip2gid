@@ -13,22 +13,20 @@ int msg_length_check(struct ip2gid_obj *obj, uint32_t max_len)
 	uint16_t num_tlvs;
 
 	if (max_len <= sizeof(struct ip2gid_hdr)) {
-		ip2gid_log_info("Msg length too short\n");
+		ip2gid_log_err("Msg length %u too short\n", max_len);
 		return -1;
 	}
 
 	hdr = (struct ip2gid_hdr *)obj->data;
-	ip2gid_log_info("Checking new Msg (msg_id = %u)\n",
-			ntohl(hdr->msg_id));
 	num_tlvs = ntohs(hdr->num_tlvs);
 	if (!num_tlvs) {
-		ip2gid_log_info("\tNo TLVS in Msg\n");
+		ip2gid_log_err("No TLVS in Msg %u\n", ntohl(hdr->msg_id));
 		return -1;
 	}
 
-	ip2gid_log_info("\tNum tlvs:%u\n", num_tlvs);
 	if (hdr->version > IP2GID_CURRENT_VERSION) {
-		ip2gid_log_info("\tMsg version isn't supported\n");
+		ip2gid_log_err("Msg %u version %d isn't supported\n",
+			       ntohl(hdr->msg_id), hdr->version);
 		return -1;
 	}
 
@@ -42,36 +40,35 @@ int msg_length_check(struct ip2gid_obj *obj, uint32_t max_len)
 		switch (ntohs(tlv->type)) {
 		case IP2GID_REQ_NONE:
 			if (tlv_len != sizeof(struct ip2gid_tlv_hdr)) {
-				ip2gid_log_info("\tTLV: None: invalid length (len= %u)\n",
-						tlv_len);
+				ip2gid_log_err("Msg %u TLV: None: invalid length (len= %u)\n",
+					       ntohl(hdr->msg_id), tlv_len);
 				return -1;
 			}
 			break;
 		case IP2GID_REQ_IPV4:
 			if (tlv_len != sizeof(struct ip2gid_req_ipv4)) {
-				ip2gid_log_info("\tTLV: IPV4: invalid length (len = %u)\n",
-						tlv_len);
+				ip2gid_log_err("Msg %u TLV: IPV4: invalid length (len = %u)\n",
+					       ntohl(hdr->msg_id), tlv_len);
 				return -1;
 			}
 			break;
 		case IP2GID_RESP_GID:
 			if (tlv_len != sizeof(struct ip2gid_resp_gid)) {
-				ip2gid_log_info("\tTLV: GID: invalid length (len = %u)\n",
-						tlv_len);
+				ip2gid_log_info("Msg %u TLV: GID: invalid length (len = %u)\n",
+						ntohl(hdr->msg_id), tlv_len);
 				return -1;
 			}
 			break;
 		default:
-			ip2gid_log_info("\tTLV: Unknown type\n");
+			ip2gid_log_err("Msg %u TLV: Unknown type %d\n",
+				       ntohl(hdr->msg_id), ntohs(tlv->type));
 			return -1;
 		}
 		tlv = (struct ip2gid_tlv_hdr *)((char *)tlv + tlv_len);
 		num_tlvs--;
 	}
-	if (num_tlvs == 0 && max_len >= 0) {
-		ip2gid_log_info("\tMsg passed basic checks\n");
+	if (num_tlvs == 0 && max_len >= 0)
 		return 0;
-	}
 
 	return -1;
 }

@@ -220,15 +220,15 @@ int ipr_resolve_req(const struct nl_ip2gid *ipr, const struct nl_msg *nl_req)
 					&req, ipr->server_port);
 
 	if (err) {
-		ip2gid_log_err("process_ip failed %d", err);
+		ip2gid_log_err("process_ip failed %d\n", err);
 		return EINVAL;
 	}
 
 	pthread_mutex_lock(&lock_pending);
 	pnd = __find_cell_req_seq(nl_req->nlmsg_hdr.nlmsg_seq);
 	if (pnd) {
-		ip2gid_log_warn("Got a request(seq = %u) that is already pending\n",
-				nl_req->nlmsg_hdr.nlmsg_seq);
+		ip2gid_log_warn("Got a request(seq = %u) that is already pending, resend %d\n",
+				nl_req->nlmsg_hdr.nlmsg_seq, pnd->resend_num);
 		/* Refresh the pending cell */
 		clock_gettime(CLOCK_REALTIME, &pnd->stamp);
 		pnd->resend_num = 0;
@@ -316,6 +316,8 @@ void *run_check_timeout(void *arg)
 				continue;
 
 			if (pending[i].resend_num >= RESEND_MAX_NUM) {
+				ip2gid_log_warn("Request %u is released due to timeout\n",
+						pending[i].seq);
 				__free_cell_req(&pending[i]);
 				continue;
 			}

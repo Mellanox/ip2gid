@@ -34,6 +34,9 @@ enum {
 #define ip2gid_log_err(format, ...) \
 	resolv_write(RESOLV_LOG_ERR, " <IPR> %s: "format, __func__, ## __VA_ARGS__)
 
+#define nl_log_dbg(format, ...) \
+	resolv_write(RESOLV_LOG_DBG, " %s: "format, __func__, ## __VA_ARGS__)
+
 #define nl_log_info(format, ...) \
 	resolv_write(RESOLV_LOG_INFO, " %s: "format, __func__, ## __VA_ARGS__)
 

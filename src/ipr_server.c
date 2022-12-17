@@ -92,8 +92,8 @@ static int server_fill_req(struct nl_ip2gid *priv,
 	    IP2GID_REQ_IPV4)
 		return -1;
 
-	ip2gid_log_info("Got IP2GID request (msg_id = %u)\n",
-			ntohl(req_hdr->msg_id));
+	ip2gid_log_dbg("Got IP2GID request (msg_id = %u)\n",
+		       ntohl(req_hdr->msg_id));
 	err = server_find_gid(priv,
 			      (struct ip2gid_req_ipv4 *)req_hdr->tlvs, resp_hdr,
 			      (struct ip2gid_resp_gid *)resp_hdr->tlvs,
