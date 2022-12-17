@@ -16,8 +16,7 @@
 
 #define IP2GID_SERVER_PORT 4791
 #define IP2GID_TIMEOUT_WAIT 2
-#define DEFAULT_PENDING_REQUESTS 500
-#define IP2GID_PENDING_TIMEOUT 60
+#define DEFAULT_PENDING_REQUESTS 1000
 
 #define IBR_NL_MAX_PAYLOAD 512
 
@@ -40,11 +39,23 @@ struct nl_msg {
 	};
 };
 
+union addr_sa {
+	struct sockaddr sa;
+	struct sockaddr_in s4;
+};
+
 struct cell_req {
-	char used;
+	uint8_t used;
+
+	struct ip2gid_obj req;
+	union addr_sa addr;
+	socklen_t addr_size;
+
 	uint32_t seq;
 	uint16_t type;
+
 	struct timespec stamp;
+	uint32_t resend_num;
 };
 
 struct nl_ip2gid {

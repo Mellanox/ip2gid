@@ -18,10 +18,13 @@
 
 static int sock_nl_fd;
 
+#define NL_RDMA_SOCKET_RCVBUF (2 * 1024 * 1024)
+
 static int nl_rdma_init(void)
 {
 	struct sockaddr_nl saddr = {};
-	int err;
+	int err, rcvbuf;
+	socklen_t len = sizeof(rcvbuf);
 
 	sock_nl_fd = socket(PF_NETLINK, SOCK_RAW, NETLINK_RDMA);
 	if (sock_nl_fd < 0)
@@ -35,6 +38,24 @@ static int nl_rdma_init(void)
 	if (err < 0) {
 		err = errno;
 		goto fail_bind;
+	}
+
+	err = getsockopt(sock_nl_fd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, &len);
+	if (err) {
+		nl_log_warn("Get SO_RCVBUF failed errno %d\n", errno);
+		return 0;
+	}
+
+	nl_log_info("NL_RDMA socket: default SO_RCVBUF 0x%x\n", rcvbuf);
+	if (rcvbuf < NL_RDMA_SOCKET_RCVBUF) {
+		rcvbuf = NL_RDMA_SOCKET_RCVBUF;
+		err = setsockopt(sock_nl_fd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, len);
+		if (err) {
+			nl_log_warn("NL_RDMA socket: Failed to set SO_RCVBUF to 0x%x\n", rcvbuf);
+			return 0;
+		}
+
+		nl_log_info("NL_RDMA socket: Set SO_RCVBUF to 0x%x\n", rcvbuf);
 	}
 
 	return 0;
@@ -108,7 +129,8 @@ loop:
 	}
 
 	op = RDMA_NL_GET_OP(req.nlmsg_hdr.nlmsg_type);
-	nl_log_info("Got a new kernel request type %d op %d\n", type, op);
+	nl_log_dbg("Got a new kernel request seq %u type %d op %d\n",
+		   req.nlmsg_hdr.nlmsg_seq, type, op);
 	switch (op) {
 	case RDMA_NL_LS_OP_RESOLVE:
 		err = path_resolve_req(&req);

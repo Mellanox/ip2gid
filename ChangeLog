@@ -1,3 +1,11 @@
+* 0.1.5
+- ipr/client: Add a thread to resend timeout requests, which may lost as it's over UDP;
+- Set a larger nl_rdma socket SO_RCVBUF;
+- Refactor prints.
+
+* 0.1.4
+- An invalid version, reverted;
+
 * 0.1.3
 - Enable FLID only when "hot_limit > 1", instead of non-0.
 
