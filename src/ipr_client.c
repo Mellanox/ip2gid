@@ -203,26 +203,27 @@ static void clear_timeout_cell_req(void)
 			cells_used, DEFAULT_PENDING_REQUESTS);
 }
 
-static int __client_send_ipr_req(const struct nl_ip2gid *ipr,
-				 const struct nl_msg *nl_req,
-				 const struct ip2gid_obj *req,
-				 union addr_sa *req_addr,
-				 socklen_t req_addr_size,
-				 struct cell_req *pending)
+static int client_send_ipr_req(const struct nl_ip2gid *ipr,
+			       const struct nl_msg *nl_req,
+			       const struct ip2gid_obj *req,
+			       union addr_sa *req_addr,
+			       socklen_t req_addr_size)
 {
+	struct cell_req *pending;
 	int err = 0, sz;
 
+	pthread_mutex_lock(&lock_pending);
+	clear_timeout_cell_req();
+	pending = find_cell_req();
 	if (!pending) {
-		pending = find_cell_req();
-		if (!pending) {
-			ip2gid_log_warn("Couldn't find free cell, drop kernel request (seq = %u)\n",
-					nl_req->nlmsg_hdr.nlmsg_seq);
-			return EBUSY;
-		}
-
-		pending->type = nl_req->nlmsg_hdr.nlmsg_type;
-		pending->seq = nl_req->nlmsg_hdr.nlmsg_seq;
+		pthread_mutex_unlock(&lock_pending);
+		ip2gid_log_warn("Couldn't find free cell, drop kernel request (seq = %u)\n",
+				nl_req->nlmsg_hdr.nlmsg_seq);
+		return EBUSY;
 	}
+
+	pending->type = nl_req->nlmsg_hdr.nlmsg_type;
+	pending->seq = nl_req->nlmsg_hdr.nlmsg_seq;
 	ip2gid_log_dbg("Sending (msg_id = %u) request\n", pending->seq);
 
 	sz = sendto(ipr->sockfd_c_ip4,
@@ -236,6 +237,7 @@ static int __client_send_ipr_req(const struct nl_ip2gid *ipr,
 		err = errno;
 	}
 
+	pthread_mutex_unlock(&lock_pending);
 	return err;
 }
 
@@ -245,7 +247,7 @@ int ipr_resolve_req(const struct nl_ip2gid *ipr, const struct nl_msg *nl_req)
 	struct ip2gid_hdr *req_hdr;
 	socklen_t addr_size;
 	union addr_sa addr;
-	struct cell_req *pnd = NULL;
+	struct cell_req *pnd;
 	int err;
 
 	if ((nl_req->nlmsg_hdr.nlmsg_len - NLMSG_HDRLEN) <
@@ -264,9 +266,13 @@ int ipr_resolve_req(const struct nl_ip2gid *ipr, const struct nl_msg *nl_req)
 	pthread_mutex_lock(&lock_pending);
 	clear_timeout_cell_req();
 	pnd = find_cell_req_seq(nl_req->nlmsg_hdr.nlmsg_seq);
-	if (pnd)
-		ip2gid_log_warn("Got a request(seq = %u) that is already pending\n",
+	if (pnd) {
+		pthread_mutex_unlock(&lock_pending);
+		ip2gid_log_warn("Got a request(seq = %u) that is already pending, dropping\n",
 				nl_req->nlmsg_hdr.nlmsg_seq);
+		return EEXIST;
+	}
+	pthread_mutex_unlock(&lock_pending);
 
 	req.data_len += sizeof(*req_hdr);
 	req_hdr = (struct ip2gid_hdr *)req.data;
@@ -274,9 +280,7 @@ int ipr_resolve_req(const struct nl_ip2gid *ipr, const struct nl_msg *nl_req)
 	req_hdr->msg_id = htonl(nl_req->nlmsg_hdr.nlmsg_seq);
 	req_hdr->num_tlvs = htons(req_hdr->num_tlvs);
 
-	err = __client_send_ipr_req(ipr, nl_req, &req, &addr, addr_size, pnd);
-	pthread_mutex_unlock(&lock_pending);
-	return err;
+	return client_send_ipr_req(ipr, nl_req, &req, &addr, addr_size);
 }
 
 static void client_nl_rdma_send_resp(struct nl_ip2gid *priv,
