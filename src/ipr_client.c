@@ -191,27 +191,16 @@ static void clear_timeout_cell_req(void)
 
 	clock_gettime(CLOCK_REALTIME, &finish);
 
-	pthread_mutex_unlock(&lock_pending);
-
-	if (cells_used < DEFAULT_PENDING_REQUESTS / 2)
-		goto out;
-
 	for (i = 0; i < DEFAULT_PENDING_REQUESTS; i++) {
 		if (!pending[i].used)
 			continue;
 		if ((finish.tv_sec - pending[i].stamp.tv_sec) >
-		    timeout_in_pending_list) {
-			ip2gid_log_warn("request %d is timeout clear it: seq %d, type %d\n",
-					i, pending[i].seq, pending[i].type);
+		    timeout_in_pending_list)
 			free_cell_req(&pending[i]);
-		}
 
 	}
-
-	ip2gid_log_dbg("Have %d cells used out of: %d\n",
-		       cells_used, DEFAULT_PENDING_REQUESTS);
-out:
-	pthread_mutex_unlock(&lock_pending);
+	ip2gid_log_warn("Have %d cells used out of: %d\n",
+			cells_used, DEFAULT_PENDING_REQUESTS);
 }
 
 static int __client_send_ipr_req(const struct nl_ip2gid *ipr,
@@ -273,6 +262,7 @@ int ipr_resolve_req(const struct nl_ip2gid *ipr, const struct nl_msg *nl_req)
 	}
 
 	pthread_mutex_lock(&lock_pending);
+	clear_timeout_cell_req();
 	pnd = find_cell_req_seq(nl_req->nlmsg_hdr.nlmsg_seq);
 	if (pnd)
 		ip2gid_log_warn("Got a request(seq = %u) that is already pending\n",
@@ -366,7 +356,6 @@ loop:
 	pthread_mutex_unlock(&lock_pending);
 	client_nl_rdma_send_resp(priv, &pending, resp_hdr);
 
-	clear_timeout_cell_req();
 	goto loop;
 
 	return NULL;
