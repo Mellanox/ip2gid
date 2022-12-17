@@ -16,16 +16,13 @@
 #include "log.h"
 #include "nl_rdma.h"
 
-union addr_sa {
-	struct sockaddr sa;
-	struct sockaddr_in s4;
-};
-
 static int cells_used = 0;
 struct cell_req pending[DEFAULT_PENDING_REQUESTS] = {};
 pthread_mutex_t lock_pending = PTHREAD_MUTEX_INITIALIZER;
 static int timeout_in_seconds = IP2GID_TIMEOUT_WAIT;
-static int timeout_in_pending_list = IP2GID_PENDING_TIMEOUT;
+
+#define RESEND_CHECK_INTERVAL  1000 /* ms */
+#define RESEND_MAX_NUM  30
 
 int ipr_client_create(struct nl_ip2gid *ipr)
 {
@@ -149,13 +146,13 @@ static int client_nl_rdma_process_ip(const struct nl_msg *nl_req,
 	return status;
 }
 
-static void free_cell_req(struct cell_req *pending)
+static void __free_cell_req(struct cell_req *pending)
 {
 	memset(pending, 0, sizeof(*pending));
 	cells_used--;
 }
 
-static struct cell_req *find_cell_req(void)
+static struct cell_req *__find_cell_req(void)
 {
 	int i;
 
@@ -170,7 +167,7 @@ static struct cell_req *find_cell_req(void)
 	return NULL;
 }
 
-static struct cell_req *find_cell_req_seq(uint32_t msg_id)
+static struct cell_req *__find_cell_req_seq(uint32_t msg_id)
 {
 	int i;
 
@@ -184,60 +181,24 @@ static struct cell_req *find_cell_req_seq(uint32_t msg_id)
 	return NULL;
 }
 
-static void clear_timeout_cell_req(void)
+static int __client_send_ipr_req(const struct nl_ip2gid *ipr,
+				 struct cell_req *pending)
 {
-	struct timespec finish;
-	int i;
-
-	clock_gettime(CLOCK_REALTIME, &finish);
-
-	for (i = 0; i < DEFAULT_PENDING_REQUESTS; i++) {
-		if (!pending[i].used)
-			continue;
-		if ((finish.tv_sec - pending[i].stamp.tv_sec) >
-		    timeout_in_pending_list)
-			free_cell_req(&pending[i]);
-
-	}
-	ip2gid_log_warn("Have %d cells used out of: %d\n",
-			cells_used, DEFAULT_PENDING_REQUESTS);
-}
-
-static int client_send_ipr_req(const struct nl_ip2gid *ipr,
-			       const struct nl_msg *nl_req,
-			       const struct ip2gid_obj *req,
-			       union addr_sa *req_addr,
-			       socklen_t req_addr_size)
-{
-	struct cell_req *pending;
+	struct cell_req tmp = *pending;
 	int err = 0, sz;
 
-	pthread_mutex_lock(&lock_pending);
-	clear_timeout_cell_req();
-	pending = find_cell_req();
-	if (!pending) {
-		pthread_mutex_unlock(&lock_pending);
-		ip2gid_log_warn("Couldn't find free cell, drop kernel request (seq = %u)\n",
-				nl_req->nlmsg_hdr.nlmsg_seq);
-		return EBUSY;
-	}
-
-	pending->type = nl_req->nlmsg_hdr.nlmsg_type;
-	pending->seq = nl_req->nlmsg_hdr.nlmsg_seq;
-	ip2gid_log_dbg("Sending (msg_id = %u) request\n", pending->seq);
-
+	pthread_mutex_unlock(&lock_pending);
 	sz = sendto(ipr->sockfd_c_ip4,
-		     req->data, req->data_len, 0,
-		     &req_addr->sa, req_addr_size);
+		    tmp.req.data, tmp.req.data_len, 0,
+		    &tmp.addr.sa, tmp.addr_size);
 
-	if (sz != req->data_len) {
+	if (sz != tmp.req.data_len) {
 		ip2gid_log_err("Didn't send all data on wire(msg_id = %u), sent %d expect %d\n",
-			       pending->seq, sz, req->data_len);
-		free_cell_req(pending);
+			       tmp.seq, sz, tmp.req.data_len);
 		err = errno;
 	}
 
-	pthread_mutex_unlock(&lock_pending);
+	pthread_mutex_lock(&lock_pending);
 	return err;
 }
 
@@ -264,23 +225,41 @@ int ipr_resolve_req(const struct nl_ip2gid *ipr, const struct nl_msg *nl_req)
 	}
 
 	pthread_mutex_lock(&lock_pending);
-	clear_timeout_cell_req();
-	pnd = find_cell_req_seq(nl_req->nlmsg_hdr.nlmsg_seq);
+	pnd = __find_cell_req_seq(nl_req->nlmsg_hdr.nlmsg_seq);
 	if (pnd) {
-		pthread_mutex_unlock(&lock_pending);
-		ip2gid_log_warn("Got a request(seq = %u) that is already pending, dropping\n",
+		ip2gid_log_warn("Got a request(seq = %u) that is already pending\n",
 				nl_req->nlmsg_hdr.nlmsg_seq);
-		return EEXIST;
+		/* Refresh the pending cell */
+		clock_gettime(CLOCK_REALTIME, &pnd->stamp);
+		pnd->resend_num = 0;
+	} else {
+		pnd = __find_cell_req();
+		if (!pnd) {
+			ip2gid_log_warn("Couldn't find free cell, drop kernel request seq = %u\n",
+					nl_req->nlmsg_hdr.nlmsg_seq);
+			err = EBUSY;
+			goto out;
+		}
+
+		pnd->req = req;
+		pnd->addr = addr;
+		pnd->addr_size = addr_size;
+		pnd->type = nl_req->nlmsg_hdr.nlmsg_type;
+		pnd->seq = nl_req->nlmsg_hdr.nlmsg_seq;
+
+		pnd->req.data_len += sizeof(*req_hdr);
+		req_hdr = (struct ip2gid_hdr *)pnd->req.data;
+		req_hdr->version = htons(IP2GID_CURRENT_VERSION);
+		req_hdr->msg_id = htonl(nl_req->nlmsg_hdr.nlmsg_seq);
+		req_hdr->num_tlvs = htons(req_hdr->num_tlvs);
 	}
+
+	/* No need to check error as there's resend mechanism */
+	__client_send_ipr_req(ipr, pnd);
+
+out:
 	pthread_mutex_unlock(&lock_pending);
-
-	req.data_len += sizeof(*req_hdr);
-	req_hdr = (struct ip2gid_hdr *)req.data;
-	req_hdr->version = htons(IP2GID_CURRENT_VERSION);
-	req_hdr->msg_id = htonl(nl_req->nlmsg_hdr.nlmsg_seq);
-	req_hdr->num_tlvs = htons(req_hdr->num_tlvs);
-
-	return client_send_ipr_req(ipr, nl_req, &req, &addr, addr_size);
+	return err;
 }
 
 static void client_nl_rdma_send_resp(struct nl_ip2gid *priv,
@@ -310,6 +289,51 @@ static void client_nl_rdma_send_resp(struct nl_ip2gid *priv,
 	nl_rdma_send_resp(&resp_msg);
 }
 
+static uint32_t time_diff_ms(struct timespec *a, struct timespec *b)
+{
+	return (b->tv_sec - a->tv_sec) * 1000 + (b->tv_nsec - a->tv_nsec) / 1000000;
+}
+
+static pthread_t tid_timeout;
+void *run_check_timeout(void *arg)
+{
+	struct nl_ip2gid *ipr = arg;
+	struct timespec now;
+	int i;
+
+	do {
+		usleep(RESEND_CHECK_INTERVAL * 1000);
+		clock_gettime(CLOCK_REALTIME, &now);
+
+		pthread_mutex_lock(&lock_pending);
+
+		if (!cells_used)
+			goto next_round;
+
+		for (i = 0; i < DEFAULT_PENDING_REQUESTS; i++) {
+			if (!pending[i].used ||
+			    time_diff_ms(&pending[i].stamp, &now) < RESEND_CHECK_INTERVAL)
+				continue;
+
+			if (pending[i].resend_num >= RESEND_MAX_NUM) {
+				__free_cell_req(&pending[i]);
+				continue;
+			}
+
+			__client_send_ipr_req(ipr, &pending[i]);
+
+			pending[i].stamp = now;
+			pending[i].resend_num++;
+			ip2gid_log_warn("Request %u resent %d times\n",
+					pending[i].seq, pending[i].resend_num);
+		}
+next_round:
+		pthread_mutex_unlock(&lock_pending);
+	} while (1);
+
+	return NULL;
+}
+
 void *run_ipr_client(void *arg)
 {
 	union addr_sa resp_addr = {};
@@ -321,6 +345,12 @@ void *run_ipr_client(void *arg)
 	struct cell_req pending;
 	int sockfd;
 	int err;
+
+	err = pthread_create(&tid_timeout, NULL, &run_check_timeout, priv);
+	if (err) {
+		ip2gid_log_err("Failed to create run_check_timeout thread %d", errno);
+		exit(1);
+	}
 
 	resp_addr_size = sizeof(resp_addr.sa);
 	sockfd = priv->sockfd_c_ip4;
@@ -348,7 +378,7 @@ loop:
 		goto loop;
 
 	pthread_mutex_lock(&lock_pending);
-	_pending = find_cell_req_seq(ntohl(resp_hdr->msg_id));
+	_pending = __find_cell_req_seq(ntohl(resp_hdr->msg_id));
 	if (!_pending) {
 		pthread_mutex_unlock(&lock_pending);
 		ip2gid_log_warn("Got msg (msg_id = %u) which isn't pending\n",
@@ -356,7 +386,7 @@ loop:
 		goto loop;
 	}
 	pending = *_pending;
-	free_cell_req(_pending);
+	__free_cell_req(_pending);
 	pthread_mutex_unlock(&lock_pending);
 	client_nl_rdma_send_resp(priv, &pending, resp_hdr);
 
