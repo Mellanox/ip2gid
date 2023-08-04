@@ -80,4 +80,5 @@ include_directories(${PROJECT_BINARY_DIR})
 
 install(TARGETS ibarr DESTINATION bin)
 
-install(FILES ibarr.service DESTINATION lib/systemd/system)
+configure_file(ibarr.service.in ibarr.service)
+install(FILES ${CMAKE_BINARY_DIR}/ibarr.service DESTINATION lib/systemd/system)
