@@ -8,7 +8,7 @@
 #  -DCMAKE_BUILD_TYPE=Debug
 #      Change the optimization level, Debug disables optimization,
 
-cmake_minimum_required(VERSION 2.8.11)
+cmake_minimum_required(VERSION 3.5)
 set(LIB_MAJOR_VERSION "0")
 set(LIB_MINOR_VERSION "1")
 set(LIB_PATCH_VERSION "5")
