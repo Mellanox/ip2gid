@@ -247,6 +247,8 @@ int path_resolve_init(void)
 
 			arrdevs[i].ports[j].uport = &uports[umad_port_num];
 			arrdevs[i].ports[j].link_layer = port_attr.link_layer;
+			/* Only IB ports open a umad port */
+			uports[umad_port_num].portid = -1;
 			if (port_attr.link_layer == IBV_LINK_LAYER_INFINIBAND) {
 				path_info("Found an IB port(%d/%d): %s/%d, sm_lid %d, sm_sl %d\n",
 					  i, ibdev_num, devname, j + 1,
@@ -291,6 +293,8 @@ void path_resolve_done(void)
 	arrdevs = NULL;
 
 	for (i = 0; i < umad_port_num; i++) {
+		if (uports[i].portid < 0)
+			continue;
 		umad_unregister(uports[i].portid, uports[i].agentid);
 		umad_close_port(uports[i].portid);
 	}
@@ -824,6 +828,12 @@ void *run_path_resolve(void *arg)
 	 * [umad_port_num, fd_num): ibdev async events
 	 */
 	for (i = 0, j = 0; i < umad_port_num; i++, j++) {
+		if (uports[i].portid < 0) {
+			/* Not an IB port; poll() ignores a negative fd */
+			fds[j].fd = -1;
+			continue;
+		}
+
 		fds[j].fd = umad_get_fd(uports[i].portid);
 		fds[j].events = POLLIN;
 		err = set_fd_block(fds[j].fd);
